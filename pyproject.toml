@@ -1,0 +1,110 @@
+[project]
+name = "ai-session-tracker-mcp"
+dynamic = ["version"]
+description = "MCP server for tracking AI coding sessions and measuring developer productivity"
+authors = [
+    {name = "Mark Grandau"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.version]
+source = "file"
+path = "src/ai_session_tracker_mcp/__version__.py"
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "bandit>=1.7.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+]
+
+[tool.pdm.scripts]
+lint = "python -m ruff check src tests"
+format = "python -m ruff format src tests"
+security = "python -m bandit -r src"
+test = "python -m pytest tests/ -v"
+test-cov = "python -m pytest tests/ -v --cov=src/ai_session_tracker_mcp --cov-branch --cov-report=term-missing"
+typecheck = "python -m mypy src"
+check-all = { composite = ["lint", "typecheck", "security", "test-cov"] }
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Unused arguments are common in test fixtures
+"tests/**/*.py" = ["ARG001", "ARG002"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+branch = true
+source = ["src/ai_session_tracker_mcp"]
+omit = ["*/__pycache__/*", "tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "\\.\\.\\.",
+]
+fail_under = 80
+show_missing = true
+skip_covered = false
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
