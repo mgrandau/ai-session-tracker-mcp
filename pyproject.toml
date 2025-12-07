@@ -8,7 +8,15 @@ authors = [
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.0",
+    "matplotlib>=3.9.0",
+]
+
+[project.scripts]
+ai-session-tracker = "ai_session_tracker_mcp.cli:main"
 
 [build-system]
 requires = ["pdm-backend"]
@@ -27,6 +35,7 @@ dev = [
     "bandit>=1.7.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.24.0",
     "mypy>=1.13.0",
     "pre-commit>=4.0.0",
 ]
@@ -39,10 +48,11 @@ test = "python -m pytest tests/ -v"
 test-cov = "python -m pytest tests/ -v --cov=src/ai_session_tracker_mcp --cov-branch --cov-report=term-missing"
 typecheck = "python -m mypy src"
 check-all = { composite = ["lint", "typecheck", "security", "test-cov"] }
+dashboard = "python -c \"from ai_session_tracker_mcp.web import run_dashboard; run_dashboard()\""
 
 [tool.ruff]
 target-version = "py313"
-line-length = 88
+line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -78,6 +88,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 branch = true
@@ -108,3 +120,20 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fastapi",
+    "fastapi.*",
+    "uvicorn",
+    "uvicorn.*",
+    "matplotlib",
+    "matplotlib.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ai_session_tracker_mcp.web.*",
+]
+disallow_untyped_decorators = false

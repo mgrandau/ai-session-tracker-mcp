@@ -1,0 +1,386 @@
+"""
+Data models for AI Session Tracker.
+
+PURPOSE: Type-safe dataclasses representing core domain entities.
+AI CONTEXT: These models define the data schema for sessions, interactions, and issues.
+
+MODEL HIERARCHY:
+- Session: Top-level workflow container (has many Interactions, Issues)
+- Interaction: Individual prompt/response exchange within a Session
+- Issue: Flagged problem within a Session
+- CodeMetrics: Code quality data for functions modified in a Session
+
+SERIALIZATION:
+All models have to_dict() for JSON persistence and from_dict() for loading.
+Timestamps use ISO 8601 format with UTC timezone.
+
+USAGE:
+    session = Session.create("Feature work", "code_generation", "Adding auth")
+    interaction = Interaction.create(session.id, "Add login", "Created login()", 4)
+    issue = Issue.create(session.id, "incorrect_output", "Wrong regex", "medium")
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+
+def _now_iso() -> str:
+    """Get current UTC time as ISO 8601 string."""
+    return datetime.now(UTC).isoformat()
+
+
+def _generate_session_id(name: str) -> str:
+    """
+    Generate unique session ID from name and timestamp.
+    Format: {sanitized_name}_{YYYYMMDD}_{HHMMSS}
+    Example: feature_auth_20251206_143022
+    """
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    sanitized = name.lower().replace(" ", "_").replace("-", "_")[:30]
+    return f"{sanitized}_{timestamp}"
+
+
+@dataclass
+class Session:
+    """
+    AI workflow session container.
+
+    LIFECYCLE:
+    1. Created via start_ai_session tool
+    2. Accumulates interactions and issues during work
+    3. Finalized via end_ai_session tool with outcome
+
+    METRICS TRACKED:
+    - Duration (start_time to end_time)
+    - Interaction count and effectiveness average
+    - Code metrics (complexity, documentation quality)
+
+    STATUS VALUES:
+    - "active": Session in progress
+    - "completed": Session ended normally
+    - "abandoned": Session ended without explicit close
+    """
+
+    id: str
+    name: str
+    task_type: str
+    context: str
+    start_time: str
+    status: str = "active"
+    end_time: str | None = None
+    outcome: str | None = None
+    notes: str = ""
+    total_interactions: int = 0
+    avg_effectiveness: float = 0.0
+    code_metrics: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def create(cls, name: str, task_type: str, context: str = "") -> Session:
+        """
+        Factory method to create new session with generated ID and timestamp.
+
+        Args:
+            name: Descriptive session name (e.g., "Add user authentication")
+            task_type: Category from Config.TASK_TYPES
+            context: Optional additional context about the work
+
+        Returns:
+            New Session instance with unique ID and start_time set.
+        """
+        return cls(
+            id=_generate_session_id(name),
+            name=name,
+            task_type=task_type,
+            context=context,
+            start_time=_now_iso(),
+        )
+
+    def end(self, outcome: str, notes: str = "") -> None:
+        """
+        Mark session as completed.
+
+        Args:
+            outcome: Result ("success", "partial", "failed")
+            notes: Optional summary notes
+        """
+        self.status = "completed"
+        self.end_time = _now_iso()
+        self.outcome = outcome
+        self.notes = notes
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "id": self.id,
+            "session_name": self.name,
+            "task_type": self.task_type,
+            "context": self.context,
+            "start_time": self.start_time,
+            "status": self.status,
+            "end_time": self.end_time,
+            "outcome": self.outcome,
+            "notes": self.notes,
+            "total_interactions": self.total_interactions,
+            "avg_effectiveness": self.avg_effectiveness,
+            "code_metrics": self.code_metrics,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Session:
+        """Deserialize from dictionary."""
+        return cls(
+            id=data["id"],
+            name=data.get("session_name", data.get("name", "")),
+            task_type=data.get("task_type", ""),
+            context=data.get("context", ""),
+            start_time=data.get("start_time", ""),
+            status=data.get("status", "active"),
+            end_time=data.get("end_time"),
+            outcome=data.get("outcome"),
+            notes=data.get("notes", ""),
+            total_interactions=data.get("total_interactions", 0),
+            avg_effectiveness=data.get("avg_effectiveness", 0.0),
+            code_metrics=data.get("code_metrics", []),
+        )
+
+
+@dataclass
+class Interaction:
+    """
+    Single AI prompt/response exchange.
+
+    TRACKED DATA:
+    - Prompt text and response summary
+    - Effectiveness rating (1-5 scale)
+    - Iteration count (how many attempts to achieve goal)
+    - Tools used during this interaction
+
+    EFFECTIVENESS SCALE:
+    1: Failed completely, had to redo manually
+    2: Mostly wrong, significant corrections needed
+    3: Partially correct, some adjustments required
+    4: Good result, minor tweaks only
+    5: Perfect, used as-is
+    """
+
+    session_id: str
+    timestamp: str
+    prompt: str
+    response_summary: str
+    effectiveness_rating: int
+    iteration_count: int = 1
+    tools_used: list[str] = field(default_factory=list)
+
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
+        prompt: str,
+        response_summary: str,
+        effectiveness_rating: int,
+        iteration_count: int = 1,
+        tools_used: list[str] | None = None,
+    ) -> Interaction:
+        """
+        Factory method to create interaction with current timestamp.
+
+        Args:
+            session_id: Parent session identifier
+            prompt: The prompt sent to AI
+            response_summary: Brief description of AI response
+            effectiveness_rating: 1-5 scale rating
+            iteration_count: Number of attempts (default 1)
+            tools_used: List of MCP tools used
+
+        Returns:
+            New Interaction instance.
+        """
+        return cls(
+            session_id=session_id,
+            timestamp=_now_iso(),
+            prompt=prompt,
+            response_summary=response_summary,
+            effectiveness_rating=max(1, min(5, effectiveness_rating)),
+            iteration_count=max(1, iteration_count),
+            tools_used=tools_used or [],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "session_id": self.session_id,
+            "timestamp": self.timestamp,
+            "prompt": self.prompt,
+            "response_summary": self.response_summary,
+            "effectiveness_rating": self.effectiveness_rating,
+            "iteration_count": self.iteration_count,
+            "tools_used": self.tools_used,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Interaction:
+        """Deserialize from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            timestamp=data["timestamp"],
+            prompt=data["prompt"],
+            response_summary=data["response_summary"],
+            effectiveness_rating=data["effectiveness_rating"],
+            iteration_count=data.get("iteration_count", 1),
+            tools_used=data.get("tools_used", []),
+        )
+
+
+@dataclass
+class Issue:
+    """
+    Flagged problem during AI session.
+
+    ISSUE TYPES (common categories):
+    - incorrect_output: AI produced wrong code/content
+    - poor_prompt: Prompt was ambiguous or misleading
+    - tool_failure: MCP tool didn't work as expected
+    - context_missing: AI lacked necessary context
+    - hallucination: AI invented non-existent APIs/features
+
+    SEVERITY LEVELS:
+    - low: Minor inconvenience, easy workaround
+    - medium: Required significant correction
+    - high: Caused substantial rework
+    - critical: Blocked progress or caused bugs
+    """
+
+    session_id: str
+    timestamp: str
+    issue_type: str
+    description: str
+    severity: str
+    resolved: bool = False
+    resolution_notes: str = ""
+
+    @classmethod
+    def create(
+        cls,
+        session_id: str,
+        issue_type: str,
+        description: str,
+        severity: str,
+    ) -> Issue:
+        """
+        Factory method to create issue with current timestamp.
+
+        Args:
+            session_id: Parent session identifier
+            issue_type: Category of issue
+            description: Detailed description of what went wrong
+            severity: One of "low", "medium", "high", "critical"
+
+        Returns:
+            New Issue instance.
+        """
+        return cls(
+            session_id=session_id,
+            timestamp=_now_iso(),
+            issue_type=issue_type,
+            description=description,
+            severity=severity,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "session_id": self.session_id,
+            "timestamp": self.timestamp,
+            "issue_type": self.issue_type,
+            "description": self.description,
+            "severity": self.severity,
+            "resolved": self.resolved,
+            "resolution_notes": self.resolution_notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Issue:
+        """Deserialize from dictionary."""
+        return cls(
+            session_id=data["session_id"],
+            timestamp=data["timestamp"],
+            issue_type=data["issue_type"],
+            description=data["description"],
+            severity=data["severity"],
+            resolved=data.get("resolved", False),
+            resolution_notes=data.get("resolution_notes", ""),
+        )
+
+
+@dataclass
+class FunctionMetrics:
+    """
+    Code metrics for a single function modified during session.
+
+    METRIC CATEGORIES:
+    1. AI Contribution: What AI added (lines, complexity)
+    2. Context: Existing code complexity AI had to understand
+    3. Documentation: Docstring quality and completeness
+    4. Value: Combined effort score for ROI calculation
+
+    COMPLEXITY CALCULATION:
+    Uses cyclomatic complexity via AST analysis:
+    - Base: 1
+    - +1 for each: if, while, for, except, with, assert
+    - +1 for each boolean operator (and, or)
+
+    DOCUMENTATION SCORING (0-100):
+    - Has docstring: +30
+    - Substantial content (>50 chars): +10
+    - Args section: +20
+    - Returns section: +20
+    - Examples section: +10
+    - Raises section: +5
+    - Type hints: +5
+    """
+
+    function_name: str
+    modification_type: str  # "added", "modified", "refactored", "deleted"
+    lines_added: int = 0
+    lines_modified: int = 0
+    lines_deleted: int = 0
+    complexity: int = 1
+    documentation_score: int = 0
+    has_docstring: bool = False
+    has_type_hints: bool = False
+
+    def effort_score(self) -> float:
+        """
+        Calculate effort score for ROI tracking.
+        Formula: lines_added * 1.0 + lines_modified * 0.5 + context_complexity * 0.1
+        """
+        context_complexity = 0 if self.modification_type == "added" else self.complexity
+        return self.lines_added * 1.0 + self.lines_modified * 0.5 + context_complexity * 0.1
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "function_name": self.function_name,
+            "modification_type": self.modification_type,
+            "ai_contribution": {
+                "lines_added": self.lines_added,
+                "lines_modified": self.lines_modified,
+                "lines_deleted": self.lines_deleted,
+                "complexity_added": self.complexity if self.modification_type == "added" else 0,
+            },
+            "context": {
+                "final_complexity": self.complexity,
+                "cognitive_load": 0 if self.modification_type == "added" else self.complexity,
+            },
+            "documentation": {
+                "has_docstring": self.has_docstring,
+                "quality_score": self.documentation_score,
+                "has_type_hints": self.has_type_hints,
+            },
+            "value_metrics": {
+                "effort_score": round(self.effort_score(), 2),
+            },
+        }
