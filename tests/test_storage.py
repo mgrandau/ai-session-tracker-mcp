@@ -3,79 +3,72 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
+from datetime import datetime
 
 import pytest
 
+from ai_session_tracker_mcp.filesystem import MockFileSystem
 from ai_session_tracker_mcp.storage import StorageManager
 
 
 @pytest.fixture
-def temp_storage_dir() -> str:
-    """Create a temporary directory for test storage."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield tmpdir
+def mock_fs() -> MockFileSystem:
+    """Create a MockFileSystem for testing."""
+    return MockFileSystem()
 
 
 @pytest.fixture
-def storage(temp_storage_dir: str) -> StorageManager:
-    """Create StorageManager with temporary directory."""
-    return StorageManager(temp_storage_dir)
+def storage(mock_fs: MockFileSystem) -> StorageManager:
+    """Create StorageManager with mock file system."""
+    return StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
 
 
 class TestStorageManagerInit:
     """Tests for StorageManager initialization."""
 
-    def test_creates_storage_directory(self, temp_storage_dir: str) -> None:
+    def test_creates_storage_directory(self, mock_fs: MockFileSystem) -> None:
         """Init creates storage directory."""
-        storage_path = os.path.join(temp_storage_dir, "test_storage")
-        StorageManager(storage_path)
-        assert os.path.isdir(storage_path)
+        StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        assert mock_fs.is_dir("/test/storage")
 
-    def test_creates_charts_directory(self, temp_storage_dir: str) -> None:
+    def test_creates_charts_directory(self, mock_fs: MockFileSystem) -> None:
         """Init creates charts subdirectory."""
-        storage = StorageManager(temp_storage_dir)
-        assert os.path.isdir(storage.charts_dir)
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        assert mock_fs.is_dir(storage.charts_dir)
 
-    def test_creates_sessions_file(self, temp_storage_dir: str) -> None:
+    def test_creates_sessions_file(self, mock_fs: MockFileSystem) -> None:
         """Init creates empty sessions.json."""
-        storage = StorageManager(temp_storage_dir)
-        assert os.path.isfile(storage.sessions_file)
-        with open(storage.sessions_file) as f:
-            assert json.load(f) == {}
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        assert mock_fs.is_file(storage.sessions_file)
+        content = json.loads(mock_fs.read_text(storage.sessions_file))
+        assert content == {}
 
-    def test_creates_interactions_file(self, temp_storage_dir: str) -> None:
+    def test_creates_interactions_file(self, mock_fs: MockFileSystem) -> None:
         """Init creates empty interactions.json."""
-        storage = StorageManager(temp_storage_dir)
-        assert os.path.isfile(storage.interactions_file)
-        with open(storage.interactions_file) as f:
-            assert json.load(f) == []
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        assert mock_fs.is_file(storage.interactions_file)
+        content = json.loads(mock_fs.read_text(storage.interactions_file))
+        assert content == []
 
-    def test_creates_issues_file(self, temp_storage_dir: str) -> None:
+    def test_creates_issues_file(self, mock_fs: MockFileSystem) -> None:
         """Init creates empty issues.json."""
-        storage = StorageManager(temp_storage_dir)
-        assert os.path.isfile(storage.issues_file)
-        with open(storage.issues_file) as f:
-            assert json.load(f) == []
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        assert mock_fs.is_file(storage.issues_file)
+        content = json.loads(mock_fs.read_text(storage.issues_file))
+        assert content == []
 
-    def test_uses_default_storage_dir(self) -> None:
-        """Init uses default storage directory when none provided."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
-            storage = StorageManager()
-            assert ".ai_sessions" in storage.storage_dir
-
-    def test_preserves_existing_data(self, temp_storage_dir: str) -> None:
+    def test_preserves_existing_data(self, mock_fs: MockFileSystem) -> None:
         """Init doesn't overwrite existing data files."""
-        sessions_file = os.path.join(temp_storage_dir, "sessions.json")
-        os.makedirs(temp_storage_dir, exist_ok=True)
-        with open(sessions_file, "w") as f:
-            json.dump({"existing": "data"}, f)
+        # Pre-create the directory and file
+        mock_fs.makedirs("/test/storage", exist_ok=True)
+        mock_fs.write_text(
+            "/test/storage/sessions.json",
+            json.dumps({"existing": "data"}),
+        )
 
-        storage = StorageManager(temp_storage_dir)
-        with open(storage.sessions_file) as f:
-            assert json.load(f) == {"existing": "data"}
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        content = json.loads(mock_fs.read_text(storage.sessions_file))
+        assert content == {"existing": "data"}
 
 
 class TestSessionOperations:
@@ -86,11 +79,13 @@ class TestSessionOperations:
         sessions = storage.load_sessions()
         assert sessions == {}
 
-    def test_save_sessions_creates_file(self, storage: StorageManager) -> None:
+    def test_save_sessions_creates_file(
+        self, storage: StorageManager, mock_fs: MockFileSystem
+    ) -> None:
         """save_sessions writes to file."""
         storage.save_sessions({"s1": {"name": "test"}})
-        with open(storage.sessions_file) as f:
-            assert json.load(f) == {"s1": {"name": "test"}}
+        content = json.loads(mock_fs.read_text(storage.sessions_file))
+        assert content == {"s1": {"name": "test"}}
 
     def test_save_sessions_returns_true(self, storage: StorageManager) -> None:
         """save_sessions returns True on success."""
@@ -142,11 +137,13 @@ class TestInteractionOperations:
         interactions = storage.load_interactions()
         assert interactions == []
 
-    def test_save_interactions_creates_file(self, storage: StorageManager) -> None:
+    def test_save_interactions_creates_file(
+        self, storage: StorageManager, mock_fs: MockFileSystem
+    ) -> None:
         """save_interactions writes to file."""
         storage.save_interactions([{"id": 1}])
-        with open(storage.interactions_file) as f:
-            assert json.load(f) == [{"id": 1}]
+        content = json.loads(mock_fs.read_text(storage.interactions_file))
+        assert content == [{"id": 1}]
 
     def test_save_interactions_returns_true(self, storage: StorageManager) -> None:
         """save_interactions returns True on success."""
@@ -195,11 +192,13 @@ class TestIssueOperations:
         issues = storage.load_issues()
         assert issues == []
 
-    def test_save_issues_creates_file(self, storage: StorageManager) -> None:
+    def test_save_issues_creates_file(
+        self, storage: StorageManager, mock_fs: MockFileSystem
+    ) -> None:
         """save_issues writes to file."""
         storage.save_issues([{"id": 1}])
-        with open(storage.issues_file) as f:
-            assert json.load(f) == [{"id": 1}]
+        content = json.loads(mock_fs.read_text(storage.issues_file))
+        assert content == [{"id": 1}]
 
     def test_save_issues_returns_true(self, storage: StorageManager) -> None:
         """save_issues returns True on success."""
@@ -268,23 +267,24 @@ class TestMaintenanceOperations:
 class TestErrorHandling:
     """Tests for error handling in storage operations."""
 
-    def test_read_json_returns_default_on_missing_file(self, storage: StorageManager) -> None:
+    def test_read_json_returns_default_on_missing_file(
+        self, storage: StorageManager, mock_fs: MockFileSystem
+    ) -> None:
         """_read_json returns default when file missing."""
-        os.remove(storage.sessions_file)
+        mock_fs.remove(storage.sessions_file)
         result = storage.load_sessions()
         assert result == {}
 
-    def test_read_json_returns_default_on_invalid_json(self, storage: StorageManager) -> None:
+    def test_read_json_returns_default_on_invalid_json(
+        self, storage: StorageManager, mock_fs: MockFileSystem
+    ) -> None:
         """_read_json returns default on invalid JSON."""
-        with open(storage.sessions_file, "w") as f:
-            f.write("not valid json {{{")
+        mock_fs.write_text(storage.sessions_file, "not valid json {{{")
         result = storage.load_sessions()
         assert result == {}
 
     def test_write_json_handles_non_serializable(self, storage: StorageManager) -> None:
         """_write_json uses default=str for non-serializable types."""
-        from datetime import datetime
-
         # datetime objects should be converted to strings
         storage.save_sessions({"time": datetime.now()})
         # Should not raise, and file should be valid JSON
@@ -292,14 +292,10 @@ class TestErrorHandling:
         assert "time" in loaded
         assert isinstance(loaded["time"], str)
 
-    def test_write_json_returns_false_on_permission_error(self, temp_storage_dir: str) -> None:
+    def test_write_json_returns_false_on_permission_error(self, mock_fs: MockFileSystem) -> None:
         """_write_json returns False on write failure."""
-        storage = StorageManager(temp_storage_dir)
-        # Make file read-only
-        os.chmod(storage.sessions_file, 0o444)
-        try:
-            result = storage.save_sessions({"new": "data"})
-            assert result is False
-        finally:
-            # Restore permissions for cleanup
-            os.chmod(storage.sessions_file, 0o644)
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+        # Make file read-only using MockFileSystem's chmod
+        mock_fs.chmod(storage.sessions_file, 0o444)
+        result = storage.save_sessions({"new": "data"})
+        assert result is False

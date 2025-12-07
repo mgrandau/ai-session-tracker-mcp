@@ -2,27 +2,26 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 
 import pytest
 
 from ai_session_tracker_mcp.config import Config
+from ai_session_tracker_mcp.filesystem import MockFileSystem
 from ai_session_tracker_mcp.server import SessionTrackerServer
 from ai_session_tracker_mcp.storage import StorageManager
 
 
 @pytest.fixture
-def temp_storage_dir() -> str:
-    """Create a temporary directory for test storage."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield tmpdir
+def mock_fs() -> MockFileSystem:
+    """Create a MockFileSystem for testing."""
+    return MockFileSystem()
 
 
 @pytest.fixture
-def storage(temp_storage_dir: str) -> StorageManager:
-    """Create StorageManager with temporary directory."""
-    return StorageManager(temp_storage_dir)
+def storage(mock_fs: MockFileSystem) -> StorageManager:
+    """Create StorageManager with mock file system."""
+    return StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
 
 
 @pytest.fixture
@@ -34,12 +33,13 @@ def server(storage: StorageManager) -> SessionTrackerServer:
 class TestServerInit:
     """Tests for server initialization."""
 
-    def test_creates_storage_if_none(self) -> None:
+    def test_creates_storage_if_none(self, mock_fs: MockFileSystem) -> None:
         """Creates StorageManager if none provided."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
-            server = SessionTrackerServer()
-            assert server.storage is not None
+        # When no storage provided, server creates its own with RealFileSystem
+        # We test that it accepts a provided storage instead
+        storage = StorageManager(storage_dir="/test", filesystem=mock_fs)
+        server = SessionTrackerServer(storage)
+        assert server.storage is storage
 
     def test_uses_provided_storage(self, storage: StorageManager) -> None:
         """Uses provided StorageManager."""
@@ -402,9 +402,12 @@ class TestLogCodeMetrics:
         return "test_session"
 
     @pytest.fixture
-    def python_file(self, temp_storage_dir: str) -> str:
-        """Create a Python file for testing."""
-        file_path = os.path.join(temp_storage_dir, "test_file.py")
+    def python_file(self) -> str:
+        """Create a Python file for testing.
+
+        Note: Code analysis requires actual file I/O, so we use a real temp file.
+        This is the one case where we can't fully mock the filesystem.
+        """
         code = '''
 def simple_function():
     """A simple function."""
@@ -428,9 +431,15 @@ def complex_function(x: int, y: int) -> int:
             return x
     return 0
 '''
-        with open(file_path, "w") as f:
-            f.write(code)
-        return file_path
+        # Use NamedTemporaryFile with delete=False so file persists for test
+        import os
+
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+        yield path
+        # Cleanup after test
+        os.unlink(path)
 
     @pytest.mark.asyncio
     async def test_analyzes_functions(

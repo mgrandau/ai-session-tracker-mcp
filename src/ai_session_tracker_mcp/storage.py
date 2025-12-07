@@ -18,10 +18,13 @@ ERROR HANDLING STRATEGY:
 - Server continues in degraded mode if storage fails
 
 USAGE:
+    # Production
     storage = StorageManager()
-    sessions = storage.load_sessions()
-    sessions["new_id"] = session.to_dict()
-    storage.save_sessions(sessions)
+
+    # Testing with MockFileSystem
+    from .filesystem import MockFileSystem
+    fs = MockFileSystem()
+    storage = StorageManager(storage_dir="/test", filesystem=fs)
 """
 
 from __future__ import annotations
@@ -29,9 +32,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config import Config
+from .filesystem import RealFileSystem
+
+if TYPE_CHECKING:
+    from .filesystem import FileSystem
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,7 @@ class StorageManager:
     2. Predictable: Always return valid data structures
     3. Idempotent: Safe to initialize multiple times
     4. Logged: All errors recorded for debugging
+    5. Testable: FileSystem can be injected for mocking
 
     INITIALIZATION:
     Creates directory structure and empty JSON files if missing.
@@ -55,12 +63,17 @@ class StorageManager:
     Single-writer assumed (one MCP server process).
     """
 
-    def __init__(self, storage_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        storage_dir: str | None = None,
+        filesystem: FileSystem | None = None,
+    ) -> None:
         """
         Initialize storage with directory structure.
 
         Args:
             storage_dir: Custom storage path. Default: Config.STORAGE_DIR
+            filesystem: FileSystem implementation. Default: RealFileSystem
 
         Creates:
             - Main storage directory
@@ -68,6 +81,7 @@ class StorageManager:
             - Empty JSON files (sessions, interactions, issues)
         """
         self.storage_dir = storage_dir or Config.STORAGE_DIR
+        self._fs: FileSystem = filesystem or RealFileSystem()
         self.sessions_file = os.path.join(self.storage_dir, Config.SESSIONS_FILE)
         self.interactions_file = os.path.join(self.storage_dir, Config.INTERACTIONS_FILE)
         self.issues_file = os.path.join(self.storage_dir, Config.ISSUES_FILE)
@@ -83,15 +97,15 @@ class StorageManager:
         Logs errors but doesn't raise - allows degraded operation.
         """
         try:
-            os.makedirs(self.storage_dir, exist_ok=True)
-            os.makedirs(self.charts_dir, exist_ok=True)
+            self._fs.makedirs(self.storage_dir, exist_ok=True)
+            self._fs.makedirs(self.charts_dir, exist_ok=True)
 
             # Initialize with empty structures if files don't exist
-            if not os.path.exists(self.sessions_file):
+            if not self._fs.exists(self.sessions_file):
                 self._write_json(self.sessions_file, {})
-            if not os.path.exists(self.interactions_file):
+            if not self._fs.exists(self.interactions_file):
                 self._write_json(self.interactions_file, [])
-            if not os.path.exists(self.issues_file):
+            if not self._fs.exists(self.issues_file):
                 self._write_json(self.issues_file, [])
 
             logger.info(f"Storage initialized: {self.storage_dir}")
@@ -110,8 +124,8 @@ class StorageManager:
             Parsed JSON data or default value.
         """
         try:
-            with open(file_path, encoding="utf-8") as f:
-                return json.load(f)
+            content = self._fs.read_text(file_path)
+            return json.loads(content)
         except FileNotFoundError:
             return default
         except json.JSONDecodeError as e:
@@ -138,10 +152,10 @@ class StorageManager:
         - UTF-8 encoding
         """
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=str)
+            content = json.dumps(data, indent=2, default=str)
+            self._fs.write_text(file_path, content)
             return True
-        except OSError as e:
+        except (OSError, PermissionError) as e:
             logger.error(f"Error writing {file_path}: {e}")
             return False
 
