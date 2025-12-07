@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "ai-session-tracker": {
+      "command": "/home/mark/src/ai-session-tracker-mcp/.venv/bin/ai-session-tracker",
+      "args": [
+        "server"
+      ]
+    }
+  }
+}
