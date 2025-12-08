@@ -57,11 +57,17 @@ class Session:
     - Duration (start_time to end_time)
     - Interaction count and effectiveness average
     - Code metrics (complexity, documentation quality)
+    - Human time estimate for ROI comparison
 
     STATUS VALUES:
     - "active": Session in progress
     - "completed": Session ended normally
     - "abandoned": Session ended without explicit close
+
+    ESTIMATE SOURCES:
+    - "manual": User provided estimate
+    - "issue_tracker": From linked issue/ticket estimate
+    - "historical": Based on similar past tasks
     """
 
     id: str
@@ -69,6 +75,9 @@ class Session:
     task_type: str
     context: str
     start_time: str
+    model_name: str
+    human_time_estimate_minutes: float
+    estimate_source: str
     status: str = "active"
     end_time: str | None = None
     outcome: str | None = None
@@ -78,13 +87,24 @@ class Session:
     code_metrics: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def create(cls, name: str, task_type: str, context: str = "") -> Session:
+    def create(
+        cls,
+        name: str,
+        task_type: str,
+        model_name: str,
+        human_time_estimate_minutes: float,
+        estimate_source: str,
+        context: str = "",
+    ) -> Session:
         """
         Factory method to create new session with generated ID and timestamp.
 
         Args:
             name: Descriptive session name (e.g., "Add user authentication")
             task_type: Category from Config.TASK_TYPES
+            model_name: AI model being used (e.g., "claude-opus-4-20250514", "gpt-4o")
+            human_time_estimate_minutes: Estimated time for human to complete task
+            estimate_source: Where estimate came from ("manual", "issue_tracker", "historical")
             context: Optional additional context about the work
 
         Returns:
@@ -96,6 +116,9 @@ class Session:
             task_type=task_type,
             context=context,
             start_time=_now_iso(),
+            model_name=model_name,
+            human_time_estimate_minutes=human_time_estimate_minutes,
+            estimate_source=estimate_source,
         )
 
     def end(self, outcome: str, notes: str = "") -> None:
@@ -119,6 +142,9 @@ class Session:
             "task_type": self.task_type,
             "context": self.context,
             "start_time": self.start_time,
+            "model_name": self.model_name,
+            "human_time_estimate_minutes": self.human_time_estimate_minutes,
+            "estimate_source": self.estimate_source,
             "status": self.status,
             "end_time": self.end_time,
             "outcome": self.outcome,
@@ -137,6 +163,9 @@ class Session:
             task_type=data.get("task_type", ""),
             context=data.get("context", ""),
             start_time=data.get("start_time", ""),
+            model_name=data.get("model_name", "unknown"),
+            human_time_estimate_minutes=data.get("human_time_estimate_minutes", 0.0),
+            estimate_source=data.get("estimate_source", "unknown"),
             status=data.get("status", "active"),
             end_time=data.get("end_time"),
             outcome=data.get("outcome"),

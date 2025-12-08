@@ -90,8 +90,14 @@ class TestToolDefinitions:
         schema = server.tools["start_ai_session"]["inputSchema"]
         assert "session_name" in schema["properties"]
         assert "task_type" in schema["properties"]
+        assert "model_name" in schema["properties"]
+        assert "human_time_estimate_minutes" in schema["properties"]
+        assert "estimate_source" in schema["properties"]
         assert "session_name" in schema["required"]
         assert "task_type" in schema["required"]
+        assert "model_name" in schema["required"]
+        assert "human_time_estimate_minutes" in schema["required"]
+        assert "estimate_source" in schema["required"]
 
     def test_log_interaction_schema(self, server: SessionTrackerServer) -> None:
         """log_ai_interaction has correct schema."""
@@ -144,6 +150,9 @@ class TestHandleMessage:
                 "arguments": {
                     "session_name": "Test",
                     "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 30,
+                    "estimate_source": "manual",
                 },
             },
         }
@@ -183,7 +192,14 @@ class TestStartSession:
     async def test_creates_session(self, server: SessionTrackerServer) -> None:
         """Creates session in storage."""
         result = await server._handle_start_session(
-            {"session_name": "Test", "task_type": "code_generation"}, 1
+            {
+                "session_name": "Test",
+                "task_type": "code_generation",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 30,
+                "estimate_source": "manual",
+            },
+            1,
         )
 
         assert "result" in result
@@ -192,12 +208,22 @@ class TestStartSession:
         assert session is not None
         assert session["session_name"] == "Test"
         assert session["task_type"] == "code_generation"
+        assert session["model_name"] == "claude-opus-4-20250514"
+        assert session["human_time_estimate_minutes"] == 30
+        assert session["estimate_source"] == "manual"
 
     @pytest.mark.asyncio
     async def test_returns_session_id(self, server: SessionTrackerServer) -> None:
         """Returns session_id in result."""
         result = await server._handle_start_session(
-            {"session_name": "Test", "task_type": "debugging"}, 1
+            {
+                "session_name": "Test",
+                "task_type": "debugging",
+                "model_name": "gpt-4o",
+                "human_time_estimate_minutes": 60,
+                "estimate_source": "issue_tracker",
+            },
+            1,
         )
 
         assert "session_id" in result["result"]
@@ -210,6 +236,9 @@ class TestStartSession:
             {
                 "session_name": "Test",
                 "task_type": "code_generation",
+                "model_name": "claude-sonnet-4-20250514",
+                "human_time_estimate_minutes": 45,
+                "estimate_source": "historical",
                 "context": "Working on auth",
             },
             1,

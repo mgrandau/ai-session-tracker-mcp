@@ -69,99 +69,242 @@ class TestSession:
 
     def test_create_sets_id(self) -> None:
         """create() generates a session ID."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.id is not None
         assert len(session.id) > 0
 
     def test_create_sets_name(self) -> None:
         """create() sets the session name."""
-        session = Session.create("Test Session", "code_generation")
+        session = Session.create(
+            "Test Session",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.name == "Test Session"
 
     def test_create_sets_task_type(self) -> None:
         """create() sets the task type."""
-        session = Session.create("Test", "debugging")
+        session = Session.create(
+            "Test",
+            "debugging",
+            model_name="gpt-4o",
+            human_time_estimate_minutes=60.0,
+            estimate_source="issue_tracker",
+        )
         assert session.task_type == "debugging"
+
+    def test_create_sets_model_name(self) -> None:
+        """create() sets the model name."""
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
+        assert session.model_name == "claude-opus-4-20250514"
+
+    def test_create_sets_human_time_estimate(self) -> None:
+        """create() sets the human time estimate."""
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=45.5,
+            estimate_source="manual",
+        )
+        assert session.human_time_estimate_minutes == 45.5
+
+    def test_create_sets_estimate_source(self) -> None:
+        """create() sets the estimate source."""
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="issue_tracker",
+        )
+        assert session.estimate_source == "issue_tracker"
 
     def test_create_sets_context(self) -> None:
         """create() sets the context."""
-        session = Session.create("Test", "code_generation", "Some context")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+            context="Some context",
+        )
         assert session.context == "Some context"
 
     def test_create_defaults_context_empty(self) -> None:
         """create() defaults context to empty string."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.context == ""
 
     def test_create_sets_start_time(self) -> None:
         """create() sets start_time to current time."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.start_time is not None
         # Should be parseable
         datetime.fromisoformat(session.start_time)
 
     def test_create_defaults_status_active(self) -> None:
         """create() defaults status to active."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.status == "active"
 
     def test_create_defaults_end_time_none(self) -> None:
         """create() defaults end_time to None."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.end_time is None
 
     def test_create_defaults_outcome_none(self) -> None:
         """create() defaults outcome to None."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.outcome is None
 
     def test_create_defaults_notes_empty(self) -> None:
         """create() defaults notes to empty string."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.notes == ""
 
     def test_create_defaults_total_interactions_zero(self) -> None:
         """create() defaults total_interactions to 0."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.total_interactions == 0
 
     def test_create_defaults_avg_effectiveness_zero(self) -> None:
         """create() defaults avg_effectiveness to 0.0."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.avg_effectiveness == 0.0
 
     def test_create_defaults_code_metrics_empty(self) -> None:
         """create() defaults code_metrics to empty list."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         assert session.code_metrics == []
 
     def test_end_sets_status_completed(self) -> None:
         """end() sets status to completed."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         session.end("success")
         assert session.status == "completed"
 
     def test_end_sets_end_time(self) -> None:
         """end() sets end_time."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         session.end("success")
         assert session.end_time is not None
 
     def test_end_sets_outcome(self) -> None:
         """end() sets outcome."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         session.end("partial")
         assert session.outcome == "partial"
 
     def test_end_sets_notes(self) -> None:
         """end() sets notes."""
-        session = Session.create("Test", "code_generation")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+        )
         session.end("success", "All tests passing")
         assert session.notes == "All tests passing"
 
     def test_to_dict_includes_all_fields(self) -> None:
         """to_dict() includes all session fields."""
-        session = Session.create("Test", "code_generation", "ctx")
+        session = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+            context="ctx",
+        )
         result = session.to_dict()
 
         assert "id" in result
@@ -169,6 +312,9 @@ class TestSession:
         assert "task_type" in result
         assert "context" in result
         assert "start_time" in result
+        assert "model_name" in result
+        assert "human_time_estimate_minutes" in result
+        assert "estimate_source" in result
         assert "status" in result
         assert "end_time" in result
         assert "outcome" in result
@@ -179,13 +325,23 @@ class TestSession:
 
     def test_to_dict_values_match(self) -> None:
         """to_dict() values match session attributes."""
-        session = Session.create("Test Session", "debugging", "context")
+        session = Session.create(
+            "Test Session",
+            "debugging",
+            model_name="gpt-4o",
+            human_time_estimate_minutes=60.0,
+            estimate_source="issue_tracker",
+            context="context",
+        )
         result = session.to_dict()
 
         assert result["id"] == session.id
         assert result["session_name"] == session.name
         assert result["task_type"] == "debugging"
         assert result["context"] == "context"
+        assert result["model_name"] == "gpt-4o"
+        assert result["human_time_estimate_minutes"] == 60.0
+        assert result["estimate_source"] == "issue_tracker"
 
     def test_from_dict_creates_session(self) -> None:
         """from_dict() creates session from dict."""
@@ -195,6 +351,9 @@ class TestSession:
             "task_type": "debugging",
             "context": "ctx",
             "start_time": "2024-01-01T00:00:00+00:00",
+            "model_name": "claude-opus-4-20250514",
+            "human_time_estimate_minutes": 45.0,
+            "estimate_source": "manual",
             "status": "active",
             "end_time": None,
             "outcome": None,
@@ -208,6 +367,9 @@ class TestSession:
         assert session.id == "test_123"
         assert session.name == "Test"
         assert session.task_type == "debugging"
+        assert session.model_name == "claude-opus-4-20250514"
+        assert session.human_time_estimate_minutes == 45.0
+        assert session.estimate_source == "manual"
         assert session.total_interactions == 5
         assert session.avg_effectiveness == 4.2
 
@@ -224,7 +386,14 @@ class TestSession:
 
     def test_roundtrip_serialization(self) -> None:
         """to_dict() and from_dict() are inverse operations."""
-        original = Session.create("Test", "code_generation", "ctx")
+        original = Session.create(
+            "Test",
+            "code_generation",
+            model_name="claude-opus-4-20250514",
+            human_time_estimate_minutes=30.0,
+            estimate_source="manual",
+            context="ctx",
+        )
         original.end("success", "notes")
         original.total_interactions = 10
         original.avg_effectiveness = 4.5
@@ -235,6 +404,9 @@ class TestSession:
         assert restored.id == original.id
         assert restored.name == original.name
         assert restored.task_type == original.task_type
+        assert restored.model_name == original.model_name
+        assert restored.human_time_estimate_minutes == original.human_time_estimate_minutes
+        assert restored.estimate_source == original.estimate_source
         assert restored.status == original.status
         assert restored.outcome == original.outcome
         assert restored.total_interactions == original.total_interactions

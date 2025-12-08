@@ -141,13 +141,40 @@ class SessionTrackerServer:
                             "description": "Task category",
                             "enum": list(Config.TASK_TYPES),
                         },
+                        "model_name": {
+                            "type": "string",
+                            "description": (
+                                "AI model being used "
+                                "(e.g., 'claude-opus-4-20250514', 'gpt-4o', "
+                                "'claude-sonnet-4-20250514')"
+                            ),
+                        },
+                        "human_time_estimate_minutes": {
+                            "type": "number",
+                            "description": (
+                                "Estimated minutes for a human to complete this task. "
+                                "For bugs: use issue tracker estimate. "
+                                "For features: estimate based on complexity."
+                            ),
+                        },
+                        "estimate_source": {
+                            "type": "string",
+                            "description": "Where the time estimate came from",
+                            "enum": ["manual", "issue_tracker", "historical"],
+                        },
                         "context": {
                             "type": "string",
                             "description": "Additional context about the work",
                             "default": "",
                         },
                     },
-                    "required": ["session_name", "task_type"],
+                    "required": [
+                        "session_name",
+                        "task_type",
+                        "model_name",
+                        "human_time_estimate_minutes",
+                        "estimate_source",
+                    ],
                 },
             },
             "log_ai_interaction": {
@@ -336,7 +363,8 @@ class SessionTrackerServer:
         Creates new session with generated ID and persists to storage.
 
         Args:
-            args: Tool arguments (session_name, task_type, context)
+            args: Tool arguments (session_name, task_type, model_name,
+                  human_time_estimate_minutes, estimate_source, context)
             msg_id: JSON-RPC message ID
 
         Returns:
@@ -346,6 +374,9 @@ class SessionTrackerServer:
             session = Session.create(
                 name=args["session_name"],
                 task_type=args["task_type"],
+                model_name=args["model_name"],
+                human_time_estimate_minutes=float(args["human_time_estimate_minutes"]),
+                estimate_source=args["estimate_source"],
                 context=args.get("context", ""),
             )
 
@@ -360,6 +391,8 @@ class SessionTrackerServer:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Session ID: {session.id}
 Task Type: {session.task_type}
+Model: {session.model_name}
+Human Estimate: {session.human_time_estimate_minutes:.0f} min ({session.estimate_source})
 Started: {session.start_time}
 
 📋 WORKFLOW REMINDER:
