@@ -14,19 +14,67 @@ from ai_session_tracker_mcp.storage import StorageManager
 
 @pytest.fixture
 def mock_fs() -> MockFileSystem:
-    """Create a MockFileSystem for testing."""
+    """Create a MockFileSystem for testing.
+
+    Provides an in-memory filesystem implementation for isolated testing.
+
+    Args:
+        No arguments required for this fixture.
+
+    Raises:
+        No exceptions raised by this fixture.
+
+    Returns:
+        MockFileSystem: A fresh mock filesystem instance with no pre-existing
+            files or directories, enabling deterministic test behavior.
+
+    Example:
+        def test_something(mock_fs):
+            mock_fs.write_file("/test/file.txt", "content")
+            assert mock_fs.read_file("/test/file.txt") == "content"
+    """
     return MockFileSystem()
 
 
 @pytest.fixture
 def storage(mock_fs: MockFileSystem) -> StorageManager:
-    """Create StorageManager with mock file system."""
+    """Create StorageManager with mock file system.
+
+    Provides isolated storage for testing server operations without
+    touching real filesystem.
+
+    Args:
+        mock_fs: MockFileSystem fixture for in-memory storage.
+
+    Returns:
+        StorageManager: Storage instance backed by mock filesystem,
+            configured with test storage directory.
+
+    Example:
+        def test_storage_ops(storage):
+            storage.save_session("s1", session_data)
+    """
     return StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
 
 
 @pytest.fixture
 def server(storage: StorageManager) -> SessionTrackerServer:
-    """Create SessionTrackerServer with test storage."""
+    """Create SessionTrackerServer with test storage.
+
+    Provides server instance configured with mock-backed storage
+    for testing MCP tool operations.
+
+    Args:
+        storage: StorageManager fixture with mock filesystem.
+
+    Returns:
+        SessionTrackerServer: Server instance ready for testing
+            all MCP tools without side effects.
+
+    Example:
+        async def test_start_session(server):
+            result = await server.start_ai_session(...)
+    """
     return SessionTrackerServer(storage)
 
 
@@ -34,7 +82,29 @@ class TestServerInit:
     """Tests for server initialization."""
 
     def test_creates_storage_if_none(self, mock_fs: MockFileSystem) -> None:
-        """Creates StorageManager if none provided."""
+        """Verifies server accepts and uses provided StorageManager.
+
+        Tests that when a StorageManager is explicitly provided, the server
+        uses that instance rather than creating its own.
+
+        Business context:
+        Dependency injection enables testing with mock storage and allows
+        custom storage configurations in production.
+
+        Arrangement:
+        1. Create StorageManager with mock filesystem.
+        2. Pass storage to SessionTrackerServer constructor.
+
+        Action:
+        Access server.storage property.
+
+        Assertion Strategy:
+        Validates server.storage is the exact same instance that was
+        provided, confirming proper dependency injection.
+
+        Testing Principle:
+        Validates dependency injection pattern for testability.
+        """
         # When no storage provided, server creates its own with RealFileSystem
         # We test that it accepts a provided storage instead
         storage = StorageManager(storage_dir="/test", filesystem=mock_fs)
@@ -42,16 +112,78 @@ class TestServerInit:
         assert server.storage is storage
 
     def test_uses_provided_storage(self, storage: StorageManager) -> None:
-        """Uses provided StorageManager."""
+        """Verifies server preserves reference to injected StorageManager.
+
+        Tests that the storage fixture's manager is correctly wired into
+        the server instance.
+
+        Business context:
+        Storage manager contains all session data. Server must use the
+        provided instance to ensure data consistency.
+
+        Arrangement:
+        Storage fixture provides pre-configured StorageManager.
+
+        Action:
+        Create server with storage, then access server.storage.
+
+        Assertion Strategy:
+        Validates identity comparison (is) confirms same object.
+
+        Testing Principle:
+        Validates reference preservation in dependency injection.
+        """
         server = SessionTrackerServer(storage)
         assert server.storage is storage
 
     def test_creates_stats_engine(self, server: SessionTrackerServer) -> None:
-        """Creates StatisticsEngine."""
+        """Verifies server initializes StatisticsEngine during construction.
+
+        Tests that the server creates a stats engine for analytics calculations
+        as part of its initialization sequence.
+
+        Business context:
+        StatisticsEngine handles ROI and effectiveness calculations. Server
+        must have this component for get_ai_observability to function.
+
+        Arrangement:
+        Server fixture provides fully initialized server.
+
+        Action:
+        Access server.stats_engine property.
+
+        Assertion Strategy:
+        Validates stats_engine is not None, confirming initialization.
+
+        Testing Principle:
+        Validates required component initialization.
+        """
         assert server.stats_engine is not None
 
     def test_registers_all_tools(self, server: SessionTrackerServer) -> None:
-        """Registers all expected tools."""
+        """Verifies all expected MCP tools are registered during init.
+
+        Tests that the server registers handlers and definitions for each
+        tool in the AI session tracking API.
+
+        Business context:
+        MCP protocol requires tool registration. Missing tools would cause
+        AI agents to fail when attempting to use session tracking.
+
+        Arrangement:
+        Define expected tool names matching the API specification.
+
+        Action:
+        Check server._tool_handlers and server.tools dictionaries.
+
+        Assertion Strategy:
+        Validates each expected tool exists in both:
+        - _tool_handlers (callable implementations)
+        - tools (JSON schema definitions)
+
+        Testing Principle:
+        Validates complete API surface registration.
+        """
         expected_tools = [
             "start_ai_session",
             "log_ai_interaction",
@@ -69,24 +201,108 @@ class TestToolDefinitions:
     """Tests for tool definition schemas."""
 
     def test_all_tools_have_name(self, server: SessionTrackerServer) -> None:
-        """All tools have a name field."""
+        """Verifies each tool definition includes matching name field.
+
+        Tests MCP protocol compliance by ensuring tool definitions have
+        name field matching their dictionary key.
+
+        Business context:
+        MCP clients use tool name for invocation. Mismatch between key
+        and name field would cause routing failures.
+
+        Arrangement:
+        Server fixture provides fully registered tool set.
+
+        Action:
+        Iterate all tools, compare dict key to name field.
+
+        Assertion Strategy:
+        Validates tool["name"] == key for every registered tool.
+
+        Testing Principle:
+        Validates protocol compliance for tool identification.
+        """
         for name, tool in server.tools.items():
             assert tool["name"] == name
 
     def test_all_tools_have_description(self, server: SessionTrackerServer) -> None:
-        """All tools have a description."""
+        """Verifies each tool has non-empty description for AI agents.
+
+        Tests that tool definitions include descriptions that help AI
+        agents understand when and how to use each tool.
+
+        Business context:
+        AI agents use descriptions to select appropriate tools. Empty
+        or missing descriptions impair tool selection accuracy.
+
+        Arrangement:
+        Server fixture provides complete tool definitions.
+
+        Action:
+        Check each tool for description presence and length.
+
+        Assertion Strategy:
+        Validates description exists and has non-zero length.
+
+        Testing Principle:
+        Validates discoverability metadata for AI tool selection.
+        """
         for tool in server.tools.values():
             assert "description" in tool
             assert len(tool["description"]) > 0
 
     def test_all_tools_have_input_schema(self, server: SessionTrackerServer) -> None:
-        """All tools have an inputSchema."""
+        """Verifies each tool has valid JSON Schema for input validation.
+
+        Tests MCP protocol compliance by ensuring all tools define input
+        schema with required structure for parameter validation.
+
+        Business context:
+        Input schemas enable request validation and AI prompt generation.
+        Missing schemas prevent proper parameter handling.
+
+        Arrangement:
+        Server fixture provides complete tool definitions.
+
+        Action:
+        Check each tool for inputSchema with type="object".
+
+        Assertion Strategy:
+        Validates inputSchema exists with object type, confirming
+        proper JSON Schema structure.
+
+        Testing Principle:
+        Validates schema compliance for input validation.
+        """
         for tool in server.tools.values():
             assert "inputSchema" in tool
             assert tool["inputSchema"]["type"] == "object"
 
     def test_start_session_schema(self, server: SessionTrackerServer) -> None:
-        """start_ai_session has correct schema."""
+        """Verifies start_ai_session has complete parameter schema.
+
+        Tests that the session start tool defines all required parameters
+        with correct required field designations.
+
+        Business context:
+        Session creation requires specific fields for tracking. Schema
+        ensures AI agents provide complete session metadata.
+
+        Arrangement:
+        Extract schema from start_ai_session tool definition.
+
+        Action:
+        Check properties and required arrays for expected fields.
+
+        Assertion Strategy:
+        Validates all five required parameters are defined:
+        - session_name, task_type, model_name in properties
+        - human_time_estimate_minutes, estimate_source in properties
+        - All five in required array
+
+        Testing Principle:
+        Validates API contract for mandatory parameters.
+        """
         schema = server.tools["start_ai_session"]["inputSchema"]
         assert "session_name" in schema["properties"]
         assert "task_type" in schema["properties"]
@@ -100,14 +316,57 @@ class TestToolDefinitions:
         assert "estimate_source" in schema["required"]
 
     def test_log_interaction_schema(self, server: SessionTrackerServer) -> None:
-        """log_ai_interaction has correct schema."""
+        """Verifies log_ai_interaction has required parameter schema.
+
+        Tests that the interaction logging tool defines essential parameters
+        for capturing AI exchange data.
+
+        Business context:
+        Interaction data drives effectiveness analysis. Schema ensures
+        AI agents provide session context and rating data.
+
+        Arrangement:
+        Extract schema from log_ai_interaction tool definition.
+
+        Action:
+        Check properties for required interaction fields.
+
+        Assertion Strategy:
+        Validates core parameters are defined:
+        - session_id for session association
+        - prompt for capturing the request
+        - effectiveness_rating for quality assessment
+
+        Testing Principle:
+        Validates API contract for interaction tracking.
+        """
         schema = server.tools["log_ai_interaction"]["inputSchema"]
         assert "session_id" in schema["properties"]
         assert "prompt" in schema["properties"]
         assert "effectiveness_rating" in schema["properties"]
 
     def test_task_type_enum_matches_config(self, server: SessionTrackerServer) -> None:
-        """task_type enum matches Config.TASK_TYPES."""
+        """Verifies task_type enum values match Config.TASK_TYPES.
+
+        Tests schema consistency by ensuring the tool schema enum matches
+        the centralized configuration definition.
+
+        Business context:
+        Task types enable workflow categorization. Mismatch between schema
+        and config would cause validation failures or data inconsistency.
+
+        Arrangement:
+        Extract task_type enum from start_ai_session schema.
+
+        Action:
+        Compare schema enum set to Config.TASK_TYPES set.
+
+        Assertion Strategy:
+        Validates exact set equality between schema and config.
+
+        Testing Principle:
+        Validates configuration consistency across layers.
+        """
         schema = server.tools["start_ai_session"]["inputSchema"]
         enum_values = set(schema["properties"]["task_type"]["enum"])
         assert enum_values == Config.TASK_TYPES
@@ -118,7 +377,30 @@ class TestHandleMessage:
 
     @pytest.mark.asyncio
     async def test_initialize_returns_capabilities(self, server: SessionTrackerServer) -> None:
-        """initialize method returns server capabilities."""
+        """Verifies initialize method returns MCP server capabilities.
+
+        Tests the MCP handshake by sending initialize message and confirming
+        the response contains proper protocol version and server info.
+
+        Business context:
+        MCP clients call initialize first. Proper response enables client
+        to understand server capabilities and version compatibility.
+
+        Arrangement:
+        Create JSON-RPC initialize message with id=1.
+
+        Action:
+        Call handle_message with initialize request.
+
+        Assertion Strategy:
+        Validates response structure and values:
+        - JSON-RPC envelope with matching id
+        - protocolVersion matches Config.MCP_VERSION
+        - serverInfo.name matches Config.SERVER_NAME
+
+        Testing Principle:
+        Validates MCP protocol handshake compliance.
+        """
         message = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
         result = await server.handle_message(message)
 
@@ -130,7 +412,28 @@ class TestHandleMessage:
 
     @pytest.mark.asyncio
     async def test_tools_list_returns_all_tools(self, server: SessionTrackerServer) -> None:
-        """tools/list returns all tool definitions."""
+        """Verifies tools/list returns complete tool definitions.
+
+        Tests the MCP tool discovery by requesting tool list and confirming
+        all six session tracking tools are returned.
+
+        Business context:
+        AI agents discover available tools via tools/list. Missing tools
+        would prevent agents from using session tracking features.
+
+        Arrangement:
+        Create JSON-RPC tools/list message.
+
+        Action:
+        Call handle_message with tools/list request.
+
+        Assertion Strategy:
+        Validates response contains exactly 6 tools, confirming
+        complete API surface is discoverable.
+
+        Testing Principle:
+        Validates MCP tool discovery protocol.
+        """
         message = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
         result = await server.handle_message(message)
 
@@ -140,7 +443,29 @@ class TestHandleMessage:
 
     @pytest.mark.asyncio
     async def test_tools_call_routes_to_handler(self, server: SessionTrackerServer) -> None:
-        """tools/call routes to correct handler."""
+        """Verifies tools/call correctly routes to tool handler.
+
+        Tests the MCP tool invocation by calling start_ai_session and
+        confirming the handler executes and returns session_id.
+
+        Business context:
+        Tool routing is the core MCP functionality. Incorrect routing
+        would break all session tracking operations.
+
+        Arrangement:
+        Create tools/call message with start_ai_session and valid arguments.
+
+        Action:
+        Call handle_message with tool invocation request.
+
+        Assertion Strategy:
+        Validates successful execution by confirming:
+        - Result contains session_id (handler executed)
+        - No error in response
+
+        Testing Principle:
+        Validates request routing to correct handler.
+        """
         message = {
             "jsonrpc": "2.0",
             "id": 3,
@@ -163,7 +488,29 @@ class TestHandleMessage:
 
     @pytest.mark.asyncio
     async def test_unknown_method_returns_error(self, server: SessionTrackerServer) -> None:
-        """Unknown method returns error."""
+        """Verifies unknown method produces JSON-RPC method not found error.
+
+        Tests error handling for unsupported MCP methods by sending an
+        unknown method and confirming proper error response.
+
+        Business context:
+        MCP clients may send methods this server doesn't support. Proper
+        error response enables graceful degradation.
+
+        Arrangement:
+        Create message with unknown method "unknown/method".
+
+        Action:
+        Call handle_message with unsupported method.
+
+        Assertion Strategy:
+        Validates JSON-RPC error response:
+        - Contains 'error' key
+        - Error code is -32601 (Method not found per spec)
+
+        Testing Principle:
+        Validates protocol-compliant error handling.
+        """
         message = {"jsonrpc": "2.0", "id": 4, "method": "unknown/method"}
         result = await server.handle_message(message)
 
@@ -172,7 +519,29 @@ class TestHandleMessage:
 
     @pytest.mark.asyncio
     async def test_unknown_tool_returns_error(self, server: SessionTrackerServer) -> None:
-        """Unknown tool returns error."""
+        """Verifies unknown tool name produces JSON-RPC error.
+
+        Tests error handling for invalid tool names by calling a
+        nonexistent tool and confirming error response.
+
+        Business context:
+        AI agents may request tools that don't exist. Clear error
+        response helps agents recover and try alternatives.
+
+        Arrangement:
+        Create tools/call message with name "nonexistent_tool".
+
+        Action:
+        Call handle_message with invalid tool name.
+
+        Assertion Strategy:
+        Validates JSON-RPC error response:
+        - Contains 'error' key indicating failure
+        - Error code is -32601 (Method not found)
+
+        Testing Principle:
+        Validates graceful handling of invalid tool requests.
+        """
         message = {
             "jsonrpc": "2.0",
             "id": 5,
@@ -190,7 +559,31 @@ class TestStartSession:
 
     @pytest.mark.asyncio
     async def test_creates_session(self, server: SessionTrackerServer) -> None:
-        """Creates session in storage."""
+        """Verifies start_ai_session creates and persists session data.
+
+        Tests the complete session creation flow including storage
+        persistence and field population.
+
+        Business context:
+        Session creation is the entry point for all tracking. Proper
+        storage ensures data survives across requests.
+
+        Arrangement:
+        Prepare complete session creation arguments.
+
+        Action:
+        Call _handle_start_session with all required fields.
+
+        Assertion Strategy:
+        Validates persistence by retrieving session and confirming:
+        - Session exists in storage with returned ID
+        - All provided fields match stored values
+        - session_name, task_type, model_name correctly stored
+        - human_time_estimate_minutes and estimate_source persisted
+
+        Testing Principle:
+        Validates end-to-end data flow for session creation.
+        """
         result = await server._handle_start_session(
             {
                 "session_name": "Test",
@@ -214,7 +607,29 @@ class TestStartSession:
 
     @pytest.mark.asyncio
     async def test_returns_session_id(self, server: SessionTrackerServer) -> None:
-        """Returns session_id in result."""
+        """Verifies start_ai_session returns usable session identifier.
+
+        Tests that the response includes a non-empty session_id that
+        can be used for subsequent operations.
+
+        Business context:
+        Session ID is required for all follow-up calls (log_interaction,
+        end_session). Response must include actionable ID.
+
+        Arrangement:
+        Prepare session creation arguments with different task type.
+
+        Action:
+        Call _handle_start_session and extract result.
+
+        Assertion Strategy:
+        Validates session_id is present and non-empty:
+        - Key exists in result dictionary
+        - Value has length > 0 (usable identifier)
+
+        Testing Principle:
+        Validates response contract for client workflow.
+        """
         result = await server._handle_start_session(
             {
                 "session_name": "Test",
@@ -231,7 +646,28 @@ class TestStartSession:
 
     @pytest.mark.asyncio
     async def test_includes_context(self, server: SessionTrackerServer) -> None:
-        """Includes context in session."""
+        """Verifies optional context field is persisted in session.
+
+        Tests that the optional context parameter is stored when provided,
+        enabling richer session metadata.
+
+        Business context:
+        Context describes what work is being done. Storing it enables
+        better filtering and understanding of session purpose.
+
+        Arrangement:
+        Prepare session arguments including optional context field.
+
+        Action:
+        Call _handle_start_session with context="Working on auth".
+
+        Assertion Strategy:
+        Validates context persistence by retrieving session and
+        confirming context field matches provided value.
+
+        Testing Principle:
+        Validates optional parameter handling.
+        """
         result = await server._handle_start_session(
             {
                 "session_name": "Test",
@@ -254,7 +690,25 @@ class TestLogInteraction:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session and return its ID."""
+        """Create a session and return its ID for interaction tests.
+
+        Sets up prerequisite session required for logging interactions.
+        Interactions must reference an existing session.
+
+        Business context:
+        Interactions track AI exchanges for effectiveness analysis.
+        Tests need sessions to validate referential integrity.
+
+        Args:
+            server: SessionTrackerServer fixture with mock storage.
+
+        Returns:
+            str: Session ID "test_session" for use in interaction tests.
+
+        Example:
+            async def test_log(server, session_id):
+                await server._handle_log_interaction({"session_id": session_id, ...})
+        """
         sessions = server.storage.load_sessions()
         session_data = {
             "id": "test_session",
@@ -269,7 +723,31 @@ class TestLogInteraction:
 
     @pytest.mark.asyncio
     async def test_logs_interaction(self, server: SessionTrackerServer, session_id: str) -> None:
-        """Logs interaction to storage."""
+        """Verifies interaction logging persists prompt data to storage.
+
+        Tests the core interaction tracking functionality by logging an AI
+        exchange and confirming it's retrievable from storage.
+
+        Business context:
+        Interaction logging enables ROI analysis by capturing AI exchanges
+        for effectiveness measurement and pattern identification.
+
+        Arrangement:
+        1. Session fixture provides an active session with known ID.
+        2. Server is configured with mock storage for isolation.
+
+        Action:
+        Calls _handle_log_interaction with complete interaction data
+        including prompt, response summary, and effectiveness rating.
+
+        Assertion Strategy:
+        Validates persistence by retrieving interactions and confirming:
+        - Exactly one interaction exists for the session.
+        - The stored prompt matches the submitted content.
+
+        Testing Principle:
+        Validates data integrity for audit trail functionality.
+        """
         await server._handle_log_interaction(
             {
                 "session_id": session_id,
@@ -288,7 +766,30 @@ class TestLogInteraction:
     async def test_updates_session_stats(
         self, server: SessionTrackerServer, session_id: str
     ) -> None:
-        """Updates session statistics."""
+        """Verifies interaction logging updates aggregate session statistics.
+
+        Tests that logging an interaction automatically recalculates session
+        metrics including interaction count and average effectiveness.
+
+        Business context:
+        Running statistics enable real-time session health monitoring and
+        inform decisions about when to end or escalate sessions.
+
+        Arrangement:
+        1. Session fixture creates an active session with no prior interactions.
+        2. Server configured with isolated storage.
+
+        Action:
+        Logs a single interaction with effectiveness rating of 4.
+
+        Assertion Strategy:
+        Validates statistic updates by confirming:
+        - total_interactions increments to 1.
+        - avg_effectiveness equals the single rating (4.0).
+
+        Testing Principle:
+        Validates derived data calculation for analytics accuracy.
+        """
         await server._handle_log_interaction(
             {
                 "session_id": session_id,
@@ -305,7 +806,29 @@ class TestLogInteraction:
 
     @pytest.mark.asyncio
     async def test_session_not_found_error(self, server: SessionTrackerServer) -> None:
-        """Returns error for non-existent session."""
+        """Verifies log_interaction rejects non-existent session ID.
+
+        Tests error handling when attempting to log interaction for a
+        session that doesn't exist in storage.
+
+        Business context:
+        Session IDs may become stale or be typos. Clear error response
+        helps AI agents recover and request correct session.
+
+        Arrangement:
+        Use session_id "nonexistent" which is not in storage.
+
+        Action:
+        Call _handle_log_interaction with invalid session_id.
+
+        Assertion Strategy:
+        Validates error response:
+        - Contains 'error' key
+        - Error code is -32602 (Invalid params)
+
+        Testing Principle:
+        Validates referential integrity enforcement.
+        """
         result = await server._handle_log_interaction(
             {
                 "session_id": "nonexistent",
@@ -321,7 +844,30 @@ class TestLogInteraction:
 
     @pytest.mark.asyncio
     async def test_missing_param_error(self, server: SessionTrackerServer, session_id: str) -> None:
-        """Returns error for missing parameter."""
+        """Verifies missing required parameters produce appropriate error.
+
+        Tests input validation by omitting required fields and confirming
+        the handler returns a properly structured JSON-RPC error.
+
+        Business context:
+        Robust parameter validation prevents data corruption and provides
+        clear feedback to AI agents about API contract requirements.
+
+        Arrangement:
+        1. Session fixture provides valid session_id.
+        2. Request payload intentionally omits prompt/response/rating fields.
+
+        Action:
+        Calls _handle_log_interaction with only session_id provided.
+
+        Assertion Strategy:
+        Validates error handling by confirming:
+        - Response contains 'error' key indicating failure.
+        - Error code is -32602 (Invalid params per JSON-RPC spec).
+
+        Testing Principle:
+        Validates fail-fast behavior for malformed requests.
+        """
         result = await server._handle_log_interaction({"session_id": session_id}, 1)
 
         assert "error" in result
@@ -333,7 +879,25 @@ class TestEndSession:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session and return its ID."""
+        """Create a session and return its ID for end session tests.
+
+        Sets up active session required for testing end_session handler.
+        Only active sessions can be properly ended.
+
+        Business context:
+        Session completion triggers duration calculation and ROI metrics.
+        Tests need active sessions to verify lifecycle transitions.
+
+        Args:
+            server: SessionTrackerServer fixture with mock storage.
+
+        Returns:
+            str: Session ID "test_session" for use in end session tests.
+
+        Example:
+            async def test_end(server, session_id):
+                await server._handle_end_session({"session_id": session_id, ...})
+        """
         sessions = server.storage.load_sessions()
         session_data = {
             "id": "test_session",
@@ -348,7 +912,31 @@ class TestEndSession:
 
     @pytest.mark.asyncio
     async def test_ends_session(self, server: SessionTrackerServer, session_id: str) -> None:
-        """Marks session as completed."""
+        """Verifies ending a session updates status and records completion time.
+
+        Tests the session lifecycle transition from active to completed,
+        ensuring all completion metadata is properly recorded.
+
+        Business context:
+        Session completion triggers duration calculation for ROI metrics
+        and marks data as ready for analytics aggregation.
+
+        Arrangement:
+        1. Session fixture creates an active session with known start_time.
+        2. Session has status 'active' before operation.
+
+        Action:
+        Calls _handle_end_session with 'success' outcome.
+
+        Assertion Strategy:
+        Validates lifecycle transition by confirming:
+        - status changes from 'active' to 'completed'.
+        - outcome field records the success status.
+        - end_time is populated for duration calculation.
+
+        Testing Principle:
+        Validates state machine transitions for session lifecycle.
+        """
         await server._handle_end_session({"session_id": session_id, "outcome": "success"}, 1)
 
         session = server.storage.get_session(session_id)
@@ -358,7 +946,27 @@ class TestEndSession:
 
     @pytest.mark.asyncio
     async def test_session_not_found_error(self, server: SessionTrackerServer) -> None:
-        """Returns error for non-existent session."""
+        """Verifies end_session rejects non-existent session ID.
+
+        Tests error handling when attempting to end a session that
+        doesn't exist in storage.
+
+        Business context:
+        Attempting to end non-existent session indicates workflow error.
+        Clear error helps diagnose session management issues.
+
+        Arrangement:
+        Use session_id "nonexistent" which is not in storage.
+
+        Action:
+        Call _handle_end_session with invalid session_id.
+
+        Assertion Strategy:
+        Validates error response contains 'error' key.
+
+        Testing Principle:
+        Validates existence check before state mutation.
+        """
         result = await server._handle_end_session(
             {"session_id": "nonexistent", "outcome": "success"}, 1
         )
@@ -371,7 +979,25 @@ class TestFlagIssue:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session and return its ID."""
+        """Create a session and return its ID for issue flagging tests.
+
+        Sets up active session required for flagging issues.
+        Issues must reference an existing session.
+
+        Business context:
+        Issue tracking enables AI quality improvement by capturing
+        problems for analysis. Tests need sessions to associate issues.
+
+        Args:
+            server: SessionTrackerServer fixture with mock storage.
+
+        Returns:
+            str: Session ID "test_session" for use in issue tests.
+
+        Example:
+            async def test_flag(server, session_id):
+                await server._handle_flag_issue({"session_id": session_id, ...})
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -383,7 +1009,31 @@ class TestFlagIssue:
 
     @pytest.mark.asyncio
     async def test_flags_issue(self, server: SessionTrackerServer, session_id: str) -> None:
-        """Adds issue to storage."""
+        """Verifies issue flagging persists problem details to storage.
+
+        Tests the issue reporting functionality by flagging a hallucination
+        and confirming all metadata is correctly stored.
+
+        Business context:
+        Issue tracking enables identification of AI failure patterns,
+        informing model selection and prompt engineering improvements.
+
+        Arrangement:
+        1. Session fixture provides an active session for issue association.
+        2. Issue data includes type, description, and severity classification.
+
+        Action:
+        Calls _handle_flag_issue with a 'hallucination' issue at 'high' severity.
+
+        Assertion Strategy:
+        Validates persistence by retrieving issues and confirming:
+        - Exactly one issue exists for the session.
+        - issue_type correctly identifies the problem category.
+        - severity accurately reflects the impact level.
+
+        Testing Principle:
+        Validates audit trail for AI failure analysis.
+        """
         await server._handle_flag_issue(
             {
                 "session_id": session_id,
@@ -401,7 +1051,27 @@ class TestFlagIssue:
 
     @pytest.mark.asyncio
     async def test_session_not_found_error(self, server: SessionTrackerServer) -> None:
-        """Returns error for non-existent session."""
+        """Verifies flag_issue rejects non-existent session ID.
+
+        Tests error handling when attempting to flag an issue for a
+        session that doesn't exist.
+
+        Business context:
+        Issues must be associated with real sessions for meaningful
+        analysis. Rejecting invalid sessions maintains data integrity.
+
+        Arrangement:
+        Use session_id "nonexistent" which is not in storage.
+
+        Action:
+        Call _handle_flag_issue with invalid session_id.
+
+        Assertion Strategy:
+        Validates error response contains 'error' key.
+
+        Testing Principle:
+        Validates foreign key constraint on issue->session.
+        """
         result = await server._handle_flag_issue(
             {
                 "session_id": "nonexistent",
@@ -420,7 +1090,25 @@ class TestLogCodeMetrics:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session and return its ID."""
+        """Create a session and return its ID for code metrics tests.
+
+        Sets up active session required for logging code metrics.
+        Code metrics must be associated with an existing session.
+
+        Business context:
+        Code metrics track AI output quality (complexity, docs).
+        Tests need sessions to validate metrics association.
+
+        Args:
+            server: SessionTrackerServer fixture with mock storage.
+
+        Returns:
+            str: Session ID "test_session" for use in metrics tests.
+
+        Example:
+            async def test_metrics(server, session_id):
+                await server._handle_log_code_metrics({"session_id": session_id, ...})
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -432,10 +1120,25 @@ class TestLogCodeMetrics:
 
     @pytest.fixture
     def python_file(self) -> str:
-        """Create a Python file for testing.
+        """Create a temporary Python file containing analyzable functions.
 
-        Note: Code analysis requires actual file I/O, so we use a real temp file.
-        This is the one case where we can't fully mock the filesystem.
+        Provides a real filesystem file for code metrics analysis, which
+        requires actual file I/O through Python's AST module.
+
+        Args:
+            self: Test class instance (implicit, no other args).
+
+        Raises:
+            OSError: If temporary file creation fails (extremely unlikely).
+
+        Returns:
+            str: Absolute path to a temporary .py file containing two
+                functions with varying complexity and documentation levels.
+
+        Example:
+            def test_metrics(python_file):
+                # python_file is path like '/tmp/tmpXXX.py'
+                result = analyze_code(python_file)
         """
         code = '''
 def simple_function():
@@ -477,7 +1180,28 @@ def complex_function(x: int, y: int) -> int:
         session_id: str,
         python_file: str,
     ) -> None:
-        """Analyzes functions and stores metrics."""
+        """Verifies code metrics handler analyzes functions.
+
+        Tests that the handler parses Python file and counts
+        functions successfully analyzed.
+
+        Business context:
+        Code metrics track AI output quality. Function count
+        confirms all specified functions were processed.
+
+        Arrangement:
+        1. Session fixture provides active session.
+        2. Python file fixture provides analyzable code.
+
+        Action:
+        Call _handle_log_code_metrics with two functions.
+
+        Assertion Strategy:
+        Validates result shows 2 functions analyzed.
+
+        Testing Principle:
+        Validates core analysis functionality.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -500,7 +1224,28 @@ def complex_function(x: int, y: int) -> int:
         session_id: str,
         python_file: str,
     ) -> None:
-        """Calculates cyclomatic complexity."""
+        """Verifies cyclomatic complexity calculation.
+
+        Tests that the handler correctly calculates complexity
+        based on branching in the analyzed function.
+
+        Business context:
+        Complexity metrics indicate maintainability. High complexity
+        may signal AI-generated code needing simplification.
+
+        Arrangement:
+        1. Session and python_file fixtures ready.
+        2. complex_function has if/if/else structure.
+
+        Action:
+        Call _handle_log_code_metrics for complex_function.
+
+        Assertion Strategy:
+        Validates complexity calculation matches expected.
+
+        Testing Principle:
+        Validates metric accuracy.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -522,7 +1267,28 @@ def complex_function(x: int, y: int) -> int:
         session_id: str,
         python_file: str,
     ) -> None:
-        """Calculates documentation score."""
+        """Verifies documentation score calculation.
+
+        Tests that the handler calculates doc quality score
+        based on docstring presence and completeness.
+
+        Business context:
+        Documentation score tracks AI-generated code quality.
+        Good documentation indicates maintainable output.
+
+        Arrangement:
+        1. Session and python_file fixtures ready.
+        2. complex_function has comprehensive docstring.
+
+        Action:
+        Call _handle_log_code_metrics for complex_function.
+
+        Assertion Strategy:
+        Validates doc_score > 0 indicating docs found.
+
+        Testing Principle:
+        Validates documentation analysis.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -541,7 +1307,29 @@ def complex_function(x: int, y: int) -> int:
     async def test_non_python_file_error(
         self, server: SessionTrackerServer, session_id: str
     ) -> None:
-        """Returns error for non-Python files."""
+        """Verifies code metrics rejects non-Python file extensions.
+
+        Tests input validation by providing a JavaScript file path,
+        confirming the handler enforces Python-only analysis.
+
+        Business context:
+        The code metrics feature uses Python AST parsing, which only
+        works with .py files. Clear errors prevent confusion.
+
+        Arrangement:
+        1. Session fixture provides a valid session context.
+        2. File path has .js extension instead of .py.
+
+        Action:
+        Calls _handle_log_code_metrics with a JavaScript file path.
+
+        Assertion Strategy:
+        Validates file type enforcement by confirming:
+        - Response contains 'error' key indicating rejection.
+
+        Testing Principle:
+        Validates input constraints for type-specific operations.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -557,7 +1345,29 @@ def complex_function(x: int, y: int) -> int:
     async def test_file_not_found_error(
         self, server: SessionTrackerServer, session_id: str
     ) -> None:
-        """Returns error for missing file."""
+        """Verifies code metrics handles missing files gracefully.
+
+        Tests error handling when the specified Python file does not exist,
+        confirming clear feedback rather than unhandled exceptions.
+
+        Business context:
+        Files may be deleted between request and processing. Graceful
+        handling prevents session corruption and aids debugging.
+
+        Arrangement:
+        1. Session fixture provides a valid session context.
+        2. File path points to a non-existent location.
+
+        Action:
+        Calls _handle_log_code_metrics with path to missing file.
+
+        Assertion Strategy:
+        Validates error handling by confirming:
+        - Response contains 'error' key with descriptive message.
+
+        Testing Principle:
+        Validates resilience to filesystem race conditions.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -576,7 +1386,31 @@ def complex_function(x: int, y: int) -> int:
         session_id: str,
         python_file: str,
     ) -> None:
-        """Stores metrics in session data."""
+        """Verifies code metrics are persisted in session data structure.
+
+        Tests that analyzed function metrics are stored within the session
+        record for later aggregation in analytics reports.
+
+        Business context:
+        Storing metrics per-session enables tracking code quality trends
+        across AI interactions and correlating with effectiveness ratings.
+
+        Arrangement:
+        1. Session fixture provides an active session.
+        2. python_file fixture provides analyzable code.
+        3. Function modification specifies 'simple_function' as added.
+
+        Action:
+        Calls _handle_log_code_metrics to analyze and store function metrics.
+
+        Assertion Strategy:
+        Validates persistence by confirming:
+        - Session contains 'code_metrics' key after operation.
+        - Metrics list has exactly one entry for the analyzed function.
+
+        Testing Principle:
+        Validates data aggregation for session-level analytics.
+        """
         await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -599,7 +1433,30 @@ def complex_function(x: int, y: int) -> int:
         session_id: str,
         python_file: str,
     ) -> None:
-        """Skips functions not found in file."""
+        """Verifies graceful handling when specified function not found in file.
+
+        Tests that the handler completes successfully when a requested function
+        doesn't exist, rather than failing the entire operation.
+
+        Business context:
+        Functions may be renamed or removed during refactoring. Graceful
+        skipping allows partial analysis while reporting what was processed.
+
+        Arrangement:
+        1. Session and python_file fixtures provide valid context.
+        2. Function name 'nonexistent_func' does not exist in the file.
+
+        Action:
+        Calls _handle_log_code_metrics requesting analysis of missing function.
+
+        Assertion Strategy:
+        Validates graceful degradation by confirming:
+        - Operation completes without error.
+        - functions_analyzed count is 0, indicating skip occurred.
+
+        Testing Principle:
+        Validates partial success behavior for resilient operations.
+        """
         result = await server._handle_log_code_metrics(
             {
                 "session_id": session_id,
@@ -619,7 +1476,29 @@ class TestGetObservability:
 
     @pytest.mark.asyncio
     async def test_returns_report(self, server: SessionTrackerServer) -> None:
-        """Returns analytics report."""
+        """Verifies get_ai_observability returns analytics report content.
+
+        Tests that the observability handler produces a result with
+        displayable content for AI agents.
+
+        Business context:
+        Observability provides session analytics. Response must include
+        content that agents can present to users.
+
+        Arrangement:
+        Empty arguments (no filtering).
+
+        Action:
+        Call _handle_get_observability with empty params.
+
+        Assertion Strategy:
+        Validates response structure:
+        - Contains 'result' key
+        - Result contains 'content' with report data
+
+        Testing Principle:
+        Validates response contract for analytics endpoint.
+        """
         result = await server._handle_get_observability({}, 1)
 
         assert "result" in result
@@ -627,7 +1506,27 @@ class TestGetObservability:
 
     @pytest.mark.asyncio
     async def test_filters_by_session_id(self, server: SessionTrackerServer) -> None:
-        """Filters data by session_id if provided."""
+        """Verifies observability can filter to specific session.
+
+        Tests that providing session_id parameter limits analytics
+        to that specific session's data.
+
+        Business context:
+        Single-session analysis helps debug specific interactions.
+        Filtering enables focused troubleshooting.
+
+        Arrangement:
+        Create two sessions with different IDs and task types.
+
+        Action:
+        Call _handle_get_observability with session_id="s1".
+
+        Assertion Strategy:
+        Validates response contains result (filtering applied).
+
+        Testing Principle:
+        Validates parameter-based data scoping.
+        """
         # Create two sessions
         sessions = server.storage.load_sessions()
         sessions["s1"] = {"id": "s1", "task_type": "code_generation"}
@@ -640,7 +1539,27 @@ class TestGetObservability:
 
     @pytest.mark.asyncio
     async def test_session_not_found_error(self, server: SessionTrackerServer) -> None:
-        """Returns error for non-existent session_id."""
+        """Verifies observability rejects non-existent session filter.
+
+        Tests error handling when requesting analytics for a session
+        that doesn't exist.
+
+        Business context:
+        Filtering by invalid session would return empty/misleading data.
+        Explicit error helps users identify typos in session ID.
+
+        Arrangement:
+        Use session_id "nonexistent" which is not in storage.
+
+        Action:
+        Call _handle_get_observability with invalid session_id filter.
+
+        Assertion Strategy:
+        Validates error response contains 'error' key.
+
+        Testing Principle:
+        Validates existence check for filter parameters.
+        """
         result = await server._handle_get_observability({"session_id": "nonexistent"}, 1)
 
         assert "error" in result
@@ -650,7 +1569,30 @@ class TestResponseHelpers:
     """Tests for response helper methods."""
 
     def test_success_response_structure(self, server: SessionTrackerServer) -> None:
-        """_success_response has correct structure."""
+        """Verifies _success_response produces valid JSON-RPC structure.
+
+        Tests the helper method that formats successful responses,
+        ensuring MCP protocol compliance.
+
+        Business context:
+        Consistent response format enables reliable client parsing.
+        Helper ensures all success responses follow same structure.
+
+        Arrangement:
+        Call helper with id=1 and message="Test message".
+
+        Action:
+        Invoke _success_response directly.
+
+        Assertion Strategy:
+        Validates JSON-RPC envelope:
+        - jsonrpc version is "2.0"
+        - id matches provided value
+        - result contains content array with text
+
+        Testing Principle:
+        Validates response format helper for protocol compliance.
+        """
         result = server._success_response(1, "Test message")
 
         assert result["jsonrpc"] == "2.0"
@@ -659,13 +1601,56 @@ class TestResponseHelpers:
         assert result["result"]["content"][0]["text"] == "Test message"
 
     def test_success_response_with_extra(self, server: SessionTrackerServer) -> None:
-        """_success_response includes extra fields."""
+        """Verifies _success_response includes additional fields.
+
+        Tests that extra dictionary parameter merges into result,
+        enabling rich response data beyond the message.
+
+        Business context:
+        Many responses need structured data (session_id, metrics).
+        Extra fields enable returning actionable data.
+
+        Arrangement:
+        Call helper with message and extra={"key": "value"}.
+
+        Action:
+        Invoke _success_response with extra parameter.
+
+        Assertion Strategy:
+        Validates extra field appears in result dict.
+
+        Testing Principle:
+        Validates extensible response format.
+        """
         result = server._success_response(1, "Test", {"key": "value"})
 
         assert result["result"]["key"] == "value"
 
     def test_error_response_structure(self, server: SessionTrackerServer) -> None:
-        """_error_response has correct structure."""
+        """Verifies _error_response produces valid JSON-RPC error structure.
+
+        Tests the helper method that formats error responses,
+        ensuring MCP protocol compliance.
+
+        Business context:
+        Consistent error format enables reliable error handling.
+        Clients depend on standard error structure for recovery.
+
+        Arrangement:
+        Call helper with id=1, code=-32600, message="Invalid request".
+
+        Action:
+        Invoke _error_response directly.
+
+        Assertion Strategy:
+        Validates JSON-RPC error envelope:
+        - jsonrpc version is "2.0"
+        - id matches provided value
+        - error contains code and message fields
+
+        Testing Principle:
+        Validates error format helper for protocol compliance.
+        """
         result = server._error_response(1, -32600, "Invalid request")
 
         assert result["jsonrpc"] == "2.0"
