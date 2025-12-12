@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:48c2945fad8de774bd7cdc4f2890317c0e26ccafbf65220150ec30e84bcea7b0"
+content_hash = "sha256:45974c8ed063cfaa31864956c0fad84f5a83bc2640195dc06c578dbb28a719dd"
 
 [[metadata.targets]]
 requires_python = ">=3.13"
@@ -313,6 +313,15 @@ files = [
     {file = "distlib-0.4.0-py2.py3-none-any.whl", hash = "sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16"},
     {file = "distlib-0.4.0.tar.gz", hash = "sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d"},
 ]
+
+[[package]]
+name = "docscope-mcp"
+version = "1.0.0"
+requires_python = ">=3.13"
+git = "https://github.com/mgrandau/docscope-mcp.git"
+revision = "5a28bcaad83fd5835ad659e329896f630c83c437"
+summary = "MCP server for documentation quality analysis across multiple programming languages"
+groups = ["default"]
 
 [[package]]
 name = "fastapi"

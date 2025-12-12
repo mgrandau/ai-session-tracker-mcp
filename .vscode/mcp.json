@@ -5,6 +5,13 @@
       "args": [
         "server"
       ]
+    },
+    "docscope-mcp": {
+      "command": "/home/mark/src/ai-session-tracker-mcp/.venv/bin/python",
+      "args": [
+        "-m",
+        "docscope_mcp.server"
+      ]
     }
   }
 }

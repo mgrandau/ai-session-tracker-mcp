@@ -40,7 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
+import subprocess  # nosec B404 - Required for gh CLI; inputs validated via DANGEROUS_CHARS_REGEX
 import sys
 import tempfile
 import time
@@ -361,7 +361,7 @@ def check_github_cli_available() -> OperationResult:
     """
     try:
         # Check gh version
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 - Fixed command, no user input
             ["gh", "--version"],
             capture_output=True,
             text=True,
@@ -376,7 +376,7 @@ def check_github_cli_available() -> OperationResult:
         version = result.stdout.strip().split("\n")[0]
 
         # Check authentication
-        auth_result = subprocess.run(
+        auth_result = subprocess.run(  # nosec B603 B607 - Fixed command, no user input
             ["gh", "auth", "status"],
             capture_output=True,
             text=True,
@@ -444,7 +444,7 @@ def invoke_with_retry(
     while attempt < max_retries:
         attempt += 1
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 command,
                 capture_output=True,
                 text=True,
@@ -1288,7 +1288,7 @@ def create_github_issue(
             temp_file,
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
 
         if result.returncode == 0:
             issue_url = result.stdout.strip()
