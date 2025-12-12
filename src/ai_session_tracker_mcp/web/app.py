@@ -18,10 +18,38 @@ from .routes import router
 
 def create_app() -> FastAPI:
     """
-    Create and configure FastAPI application.
+    Create and configure the FastAPI dashboard application.
+
+    Factory function that creates a new FastAPI instance with all routes
+    registered and static files mounted. Uses the application factory
+    pattern for testability and flexibility.
+
+    Business context: The FastAPI app serves the web dashboard, providing
+    both HTML pages for human viewing and JSON APIs for programmatic access
+    to session tracking data and analytics.
 
     Returns:
-        Configured FastAPI instance.
+        Configured FastAPI application instance with:
+        - All dashboard routes registered (/, /partials/*, /charts/*, /api/*)
+        - Static files mounted at /static if the static directory exists
+        - OpenAPI documentation available at /docs
+        - Metadata including title, description, and version
+
+    Raises:
+        ImportError: If FastAPI or required dependencies are not installed.
+
+    Example:
+        >>> app = create_app()
+        >>> # Use with uvicorn programmatically
+        >>> import uvicorn
+        >>> uvicorn.run(app, host='127.0.0.1', port=8000)
+
+        >>> # Or for testing
+        >>> from fastapi.testclient import TestClient
+        >>> client = TestClient(create_app())
+        >>> response = client.get('/')
+        >>> response.status_code
+        200
     """
     app = FastAPI(
         title="AI Session Tracker",
@@ -46,12 +74,38 @@ def run_dashboard(
     reload: bool = False,
 ) -> None:
     """
-    Run the dashboard server.
+    Launch the AI Session Tracker web dashboard server.
+
+    Starts a uvicorn ASGI server hosting the FastAPI dashboard application.
+    The dashboard provides real-time visualization of session metrics, ROI
+    calculations, and effectiveness charts via an htmx-powered interface.
+
+    Business context: The web dashboard is the primary interface for
+    stakeholders to monitor AI productivity. It provides visual ROI
+    justification and helps identify patterns in AI effectiveness.
 
     Args:
-        host: Bind address
-        port: Port number
-        reload: Enable auto-reload for development
+        host: Network interface to bind the server to. Use '127.0.0.1'
+            for local-only access (default) or '0.0.0.0' for network access.
+        port: TCP port number for the HTTP server. Default 8000.
+            Common alternatives: 3000, 5000, 8080.
+        reload: Enable auto-reload on code changes for development.
+            Should be False in production for stability.
+
+    Returns:
+        None. This function blocks until the server is stopped (Ctrl+C).
+
+    Raises:
+        OSError: If the port is already in use or host is invalid.
+        ImportError: If uvicorn is not installed.
+
+    Example:
+        >>> # Start development server
+        >>> run_dashboard(host='127.0.0.1', port=8000, reload=True)
+        # Server runs at http://127.0.0.1:8000
+
+        >>> # Start production server (accessible on network)
+        >>> run_dashboard(host='0.0.0.0', port=80)
     """
     uvicorn.run(
         "ai_session_tracker_mcp.web.app:create_app",

@@ -26,22 +26,112 @@ router = APIRouter()
 
 
 def get_storage() -> StorageManager:
-    """Get storage manager instance."""
+    """
+    Create and return a StorageManager instance for data access.
+
+    Factory function providing storage access to route handlers. Creates
+    a new StorageManager instance each time to ensure fresh file reads
+    and avoid stale data issues.
+
+    Business context: All dashboard data comes from JSON files managed
+    by StorageManager. This function provides the data access layer
+    that connects routes to persisted session tracking data.
+
+    Returns:
+        StorageManager instance configured with default storage directory
+        (.ai_sessions/) ready for reading sessions, interactions, and issues.
+
+    Raises:
+        OSError: If storage directory cannot be created or accessed.
+
+    Example:
+        >>> storage = get_storage()
+        >>> sessions = storage.load_sessions()
+    """
     return StorageManager()
 
 
 def get_statistics() -> StatisticsEngine:
-    """Get statistics engine instance."""
+    """
+    Create and return a StatisticsEngine instance for calculations.
+
+    Factory function providing the statistics calculation engine to
+    route handlers. Uses default cost parameters from Config class.
+
+    Business context: ROI calculations, effectiveness averages, and
+    all analytical metrics are computed by the StatisticsEngine.
+    This function provides the calculation layer for dashboard views.
+
+    Returns:
+        StatisticsEngine instance configured with default cost parameters
+        (human_hourly_rate=$130, ai_monthly_cost=$40) ready for ROI
+        and productivity metric calculations.
+
+    Raises:
+        None - StatisticsEngine initialization is fail-safe.
+
+    Example:
+        >>> stats = get_statistics()
+        >>> roi = stats.calculate_roi_metrics(sessions, interactions)
+    """
     return StatisticsEngine()
 
 
 def get_dashboard_presenter() -> DashboardPresenter:
-    """Get dashboard presenter with dependencies."""
+    """
+    Create and return a DashboardPresenter with dependencies.
+
+    Factory function that assembles the dashboard presenter with its
+    required storage and statistics dependencies. The presenter
+    transforms raw data into view models for template rendering.
+
+    Business context: The presenter pattern separates data transformation
+    from route handling, enabling testable business logic and clean
+    separation of concerns between data access and presentation.
+
+    Returns:
+        DashboardPresenter instance with injected StorageManager and
+        StatisticsEngine, ready to generate view models for sessions,
+        ROI, effectiveness, and issue displays.
+
+    Raises:
+        OSError: If storage cannot be initialized.
+
+    Example:
+        >>> presenter = get_dashboard_presenter()
+        >>> overview = presenter.get_overview()
+        >>> print(f"Total sessions: {len(overview.sessions)}")
+    """
     return DashboardPresenter(get_storage(), get_statistics())
 
 
 def get_chart_presenter() -> ChartPresenter:
-    """Get chart presenter with dependencies."""
+    """
+    Create and return a ChartPresenter with dependencies.
+
+    Factory function that assembles the chart presenter for server-side
+    chart rendering. Uses matplotlib to generate PNG chart images
+    that can be served directly to browsers.
+
+    Business context: Visual charts (effectiveness bars, ROI comparison,
+    timeline) provide quick insights for stakeholders. Server-side
+    rendering ensures consistent appearance across all clients.
+
+    Returns:
+        ChartPresenter instance with injected StorageManager and
+        StatisticsEngine, ready to render PNG charts for effectiveness
+        distribution, ROI comparison, and session timeline.
+
+    Raises:
+        OSError: If storage cannot be initialized.
+        ImportError: If matplotlib is not available (graceful fallback).
+
+    Example:
+        >>> presenter = get_chart_presenter()
+        >>> png_bytes = presenter.render_effectiveness_chart()
+        >>> len(png_bytes) > 0
+        True
+    """
     return ChartPresenter(get_storage(), get_statistics())
 
 
@@ -53,9 +143,35 @@ def get_chart_presenter() -> ChartPresenter:
 @router.get("/", response_class=HTMLResponse)
 async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
     """
-    Main dashboard page.
+    Render the main dashboard page with complete analytics overview.
 
-    Returns full HTML page with htmx-enabled components.
+    Serves the primary dashboard HTML page containing session lists,
+    ROI summary, effectiveness charts, and auto-refreshing components
+    powered by htmx for real-time updates without full page reloads.
+
+    Business context: This is the main entry point for the web dashboard.
+    Stakeholders use this view to monitor AI productivity metrics, track
+    ROI progress, and identify sessions needing attention.
+
+    Args:
+        request: FastAPI Request object (unused but required by framework
+            for potential future enhancements like user context).
+
+    Returns:
+        HTMLResponse containing the complete dashboard page with:
+        - Header with title and auto-refresh indicator
+        - ROI summary panel showing cost savings and percentages
+        - Effectiveness distribution chart with star ratings
+        - Sessions table with status, duration, and metrics
+        - Embedded htmx triggers for automatic 30-second refresh
+
+    Raises:
+        None - Presenter errors result in empty/default display.
+
+    Example:
+        >>> # Access via browser
+        >>> # GET http://localhost:8000/
+        >>> # Returns full HTML dashboard page
     """
     presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
@@ -72,7 +188,34 @@ async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
 
 @router.get("/partials/sessions", response_class=HTMLResponse)
 async def sessions_partial() -> HTMLResponse:
-    """Sessions list partial for htmx refresh."""
+    """
+    Render the sessions table HTML fragment for htmx partial updates.
+
+    Returns only the sessions table HTML, not a full page. Designed for
+    htmx requests that swap this content into the existing page without
+    a full reload, enabling real-time dashboard updates.
+
+    Business context: Live-updating session lists let users see new
+    sessions appear and status changes reflected without manual refresh,
+    improving the monitoring experience.
+
+    Returns:
+        HTMLResponse containing a table with session rows showing:
+        - Session ID (truncated with ellipsis)
+        - Project name
+        - Status badge (active/completed/abandoned)
+        - Duration (minutes or hours)
+        - Interaction count
+        - Effectiveness stars (★★★☆☆ format)
+
+    Raises:
+        None - Presenter errors result in empty table display.
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/sessions
+        >>> # Returns: <table>...</table> HTML fragment
+    """
     presenter = get_dashboard_presenter()
     sessions = presenter.get_sessions_list()
 
@@ -82,7 +225,32 @@ async def sessions_partial() -> HTMLResponse:
 
 @router.get("/partials/roi", response_class=HTMLResponse)
 async def roi_partial() -> HTMLResponse:
-    """ROI summary partial for htmx refresh."""
+    """
+    Render the ROI summary panel HTML fragment for htmx partial updates.
+
+    Returns only the ROI panel HTML content for swapping into the
+    dashboard without full page reload. Shows key cost savings metrics
+    that update in real-time as sessions complete.
+
+    Business context: ROI is the primary justification metric for AI
+    tool investment. Live updates show immediate impact of completed
+    work, reinforcing the value of AI-assisted development.
+
+    Returns:
+        HTMLResponse containing ROI panel with:
+        - Large ROI percentage display with color coding
+        - Session counts (total and completed)
+        - Time saved in human-readable format
+        - Cost saved in currency format
+
+    Raises:
+        None - Presenter errors result in zero/default display.
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/roi
+        >>> # Returns: <h2>💰 ROI Summary</h2>... HTML fragment
+    """
     presenter = get_dashboard_presenter()
     roi = presenter.get_roi_summary()
 
@@ -92,7 +260,32 @@ async def roi_partial() -> HTMLResponse:
 
 @router.get("/partials/effectiveness", response_class=HTMLResponse)
 async def effectiveness_partial() -> HTMLResponse:
-    """Effectiveness distribution partial."""
+    """
+    Render the effectiveness distribution panel HTML fragment.
+
+    Returns the effectiveness panel HTML showing rating distribution
+    as a horizontal bar chart with star labels. Designed for htmx
+    partial swapping to update the dashboard in real-time.
+
+    Business context: Effectiveness distribution shows the quality
+    of AI outputs at a glance. A healthy distribution skews toward
+    4-5 stars, indicating AI consistently produces usable code.
+
+    Returns:
+        HTMLResponse containing effectiveness panel with:
+        - Large average rating display (e.g., "4.2/5")
+        - Total interaction count
+        - Horizontal bar chart for each rating level (5 to 1)
+        - Bar widths proportional to rating frequency
+
+    Raises:
+        None - Presenter errors result in zero/default display.
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/effectiveness
+        >>> # Returns: <h2>⭐ Effectiveness</h2>... HTML fragment
+    """
     presenter = get_dashboard_presenter()
     eff = presenter.get_effectiveness()
 
@@ -107,7 +300,30 @@ async def effectiveness_partial() -> HTMLResponse:
 
 @router.get("/charts/effectiveness.png")
 async def effectiveness_chart() -> Response:
-    """Effectiveness distribution chart as PNG."""
+    """
+    Generate and serve effectiveness distribution chart as PNG image.
+
+    Creates a matplotlib horizontal bar chart showing the distribution
+    of effectiveness ratings (1-5 stars) and returns it as a PNG image.
+    Falls back to SVG placeholder if matplotlib is not installed.
+
+    Business context: Visual charts are essential for executive reports
+    and presentations. This chart provides a publication-ready view of
+    AI effectiveness that can be embedded in documents.
+
+    Returns:
+        Response with either:
+        - PNG image bytes (media_type="image/png") when matplotlib available
+        - SVG placeholder (media_type="image/svg+xml") as fallback
+
+    Raises:
+        None - ImportError is caught and results in placeholder response.
+
+    Example:
+        >>> # Browser/img tag request
+        >>> # GET /charts/effectiveness.png
+        >>> # Returns: binary PNG image data
+    """
     presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_effectiveness_chart()
@@ -122,7 +338,30 @@ async def effectiveness_chart() -> Response:
 
 @router.get("/charts/roi.png")
 async def roi_chart() -> Response:
-    """ROI comparison chart as PNG."""
+    """
+    Generate and serve ROI comparison chart as PNG image.
+
+    Creates a matplotlib bar chart comparing human baseline cost,
+    AI actual cost, and savings. Returns it as a PNG image for
+    embedding in the dashboard or external reports.
+
+    Business context: The ROI chart is the primary visual for
+    justifying AI investment. It shows at a glance how much money
+    is being saved compared to traditional development approaches.
+
+    Returns:
+        Response with either:
+        - PNG image bytes (media_type="image/png") when matplotlib available
+        - SVG placeholder (media_type="image/svg+xml") as fallback
+
+    Raises:
+        None - ImportError is caught and results in placeholder response.
+
+    Example:
+        >>> # Browser/img tag request
+        >>> # GET /charts/roi.png
+        >>> # Returns: binary PNG image data with cost comparison bars
+    """
     presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_roi_chart()
@@ -136,7 +375,30 @@ async def roi_chart() -> Response:
 
 @router.get("/charts/timeline.png")
 async def timeline_chart() -> Response:
-    """Sessions timeline chart as PNG."""
+    """
+    Generate and serve sessions timeline chart as PNG image.
+
+    Creates a matplotlib bar chart showing session durations over time,
+    with bars colored by status (completed=green, active=blue, other=gray).
+    Returns as PNG for dashboard embedding or export.
+
+    Business context: The timeline chart helps identify work patterns,
+    showing when AI-assisted sessions are happening and how long they
+    take. Useful for capacity planning and trend analysis.
+
+    Returns:
+        Response with either:
+        - PNG image bytes (media_type="image/png") when matplotlib available
+        - SVG placeholder (media_type="image/svg+xml") as fallback
+
+    Raises:
+        None - ImportError is caught and results in placeholder response.
+
+    Example:
+        >>> # Browser/img tag request
+        >>> # GET /charts/timeline.png
+        >>> # Returns: binary PNG image with session bars over time
+    """
     presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_sessions_timeline()
@@ -155,7 +417,37 @@ async def timeline_chart() -> Response:
 
 @router.get("/api/overview")
 async def api_overview() -> dict[str, object]:
-    """Get complete dashboard data as JSON."""
+    """
+    Get complete dashboard data as JSON for programmatic access.
+
+    Returns all dashboard data in a structured JSON format suitable
+    for external integrations, custom dashboards, or automated
+    monitoring systems. Provides the same data as the HTML dashboard.
+
+    Business context: The JSON API enables integration with other
+    tools (Slack bots, custom dashboards, CI/CD pipelines) that
+    want to consume session tracking data programmatically.
+
+    Returns:
+        Dict containing:
+        - 'sessions': List of session objects with id, project, status,
+          duration_minutes, interaction_count, effectiveness_avg
+        - 'roi': Object with total_sessions, cost_saved, roi_percentage
+        - 'effectiveness': Object with distribution dict and average
+
+    Raises:
+        None - Presenter errors result in empty/zero values.
+
+    Example:
+        >>> # HTTP request
+        >>> # GET /api/overview
+        >>> # Response:
+        >>> {
+        ...     "sessions": [{"session_id": "...", "status": "completed", ...}],
+        ...     "roi": {"total_sessions": 10, "cost_saved": 500.0, ...},
+        ...     "effectiveness": {"distribution": {"5": 8, ...}, "average": 4.2}
+        ... }
+    """
     presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
     return {
@@ -184,7 +476,34 @@ async def api_overview() -> dict[str, object]:
 
 @router.get("/api/report")
 async def api_report() -> dict[str, str]:
-    """Get text report as JSON."""
+    """
+    Get formatted text analytics report as JSON.
+
+    Returns the same text report generated by the CLI 'report' command,
+    wrapped in JSON for programmatic access. The report includes all
+    metrics formatted for human reading with emoji icons and alignment.
+
+    Business context: The text report is useful for embedding in
+    Slack messages, email summaries, or any context where a
+    pre-formatted human-readable summary is preferred over raw data.
+
+    Returns:
+        Dict with single key 'report' containing the multi-line text
+        report string with session summary, ROI metrics, effectiveness
+        distribution, issues summary, and code metrics.
+
+    Raises:
+        None - Presenter errors result in empty report string.
+
+    Example:
+        >>> # HTTP request
+        >>> # GET /api/report
+        >>> # Response:
+        >>> {
+        ...     "report": "==================================================\n"
+        ...               "AI SESSION TRACKER - ANALYTICS REPORT\n..."
+        ... }
+    """
     presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
     return {"report": overview.report_text}
@@ -196,7 +515,32 @@ async def api_report() -> dict[str, str]:
 
 
 def _placeholder_chart_svg(title: str) -> bytes:
-    """Generate placeholder SVG when matplotlib unavailable."""
+    """
+    Generate a placeholder SVG when matplotlib is unavailable.
+
+    Creates a simple SVG image with centered text indicating that
+    matplotlib needs to be installed for full chart functionality.
+    Used as graceful fallback for chart routes.
+
+    Business context: Graceful degradation ensures the dashboard remains
+    functional even without optional visualization dependencies.
+
+    Args:
+        title: Chart title to display in the placeholder (e.g.,
+            'Effectiveness', 'ROI', 'Timeline').
+
+    Returns:
+        UTF-8 encoded bytes of an SVG image with gray background
+        and centered text: "{title} Chart (install matplotlib)".
+
+    Raises:
+        None: String formatting and encoding never raise.
+
+    Example:
+        >>> svg = _placeholder_chart_svg('ROI')
+        >>> b'ROI Chart' in svg
+        True
+    """
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
         <rect width="100%" height="100%" fill="#f1f5f9"/>
         <text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="16">
@@ -207,7 +551,37 @@ def _placeholder_chart_svg(title: str) -> bytes:
 
 
 def _render_dashboard_html(overview: object) -> str:
-    """Render full dashboard HTML."""
+    """
+    Render the complete dashboard HTML page from overview data.
+
+    Generates a full HTML document with embedded CSS and htmx integration.
+    The page includes all dashboard panels (sessions, ROI, effectiveness)
+    and configures automatic refresh triggers for real-time updates.
+
+    Business context: Server-side rendering ensures fast initial load and
+    consistent appearance. htmx enables dynamic updates without full page
+    reload, providing a smooth user experience.
+
+    Args:
+        overview: DashboardOverview object containing sessions list,
+            roi summary, effectiveness distribution, and report text.
+            Type is 'object' for import cycle avoidance.
+
+    Returns:
+        Complete HTML string including DOCTYPE, head with styles and
+        htmx script, and body with all dashboard components. The page
+        uses a dark theme with CSS custom properties for consistency.
+
+    Raises:
+        None: Template construction never raises.
+
+    Example:
+        >>> presenter = get_dashboard_presenter()
+        >>> overview = presenter.get_overview()
+        >>> html = _render_dashboard_html(overview)
+        >>> '<!DOCTYPE html>' in html
+        True
+    """
     from ..presenters import DashboardOverview
 
     ov: DashboardOverview = overview  # type: ignore[assignment]
@@ -420,7 +794,36 @@ def _render_dashboard_html(overview: object) -> str:
 
 
 def _render_sessions_table(sessions: Sequence[object]) -> str:
-    """Render sessions table HTML."""
+    """
+    Render sessions data as an HTML table.
+
+    Creates a formatted table with session information including
+    truncated IDs, project names, status badges, duration, interaction
+    counts, and star ratings. Shows placeholder text when no sessions.
+
+    Business context: The sessions table is the primary view for browsing
+    all tracked AI sessions. Truncated IDs prevent layout overflow while
+    status badges provide quick visual scanning.
+
+    Args:
+        sessions: Sequence of SessionViewModel objects to render.
+            Type is 'object' to avoid import cycles; internally cast
+            to SessionViewModel for property access.
+
+    Returns:
+        HTML string containing a complete table element with thead
+        and tbody. Includes status badges with CSS classes and
+        truncated session IDs with ellipsis for readability.
+
+    Raises:
+        None: Template string construction never raises.
+
+    Example:
+        >>> sessions = presenter.get_sessions_list()
+        >>> html = _render_sessions_table(sessions)
+        >>> '<table>' in html
+        True
+    """
     from ..presenters import SessionViewModel
 
     rows = ""
@@ -459,7 +862,35 @@ def _render_sessions_table(sessions: Sequence[object]) -> str:
 
 
 def _render_roi_panel(roi: object) -> str:
-    """Render ROI summary panel HTML."""
+    """
+    Render ROI summary data as an HTML panel.
+
+    Creates a formatted panel with large ROI percentage display,
+    color-coded based on positive/negative value, and supporting
+    metrics including session counts, time saved, and cost saved.
+
+    Business context: ROI visualization helps stakeholders understand
+    the value of AI assistance. Positive ROI (green) validates AI
+    investment; neutral/negative prompts workflow review.
+
+    Args:
+        roi: ROIViewModel object containing roi_percentage, total_sessions,
+            completed_sessions, time_saved_display, and cost_saved_display.
+            Type is 'object' to avoid import cycles.
+
+    Returns:
+        HTML string containing panel title, large metric display with
+        appropriate CSS class (positive/neutral), and detail lines.
+
+    Raises:
+        None: Template string construction never raises.
+
+    Example:
+        >>> roi = presenter.get_roi_summary()
+        >>> html = _render_roi_panel(roi)
+        >>> '💰 ROI Summary' in html
+        True
+    """
     from ..presenters import ROIViewModel
 
     r: ROIViewModel = roi  # type: ignore[assignment]
@@ -476,7 +907,36 @@ def _render_roi_panel(roi: object) -> str:
 
 
 def _render_effectiveness_panel(eff: object) -> str:
-    """Render effectiveness distribution panel HTML."""
+    """
+    Render effectiveness distribution as an HTML panel with bar chart.
+
+    Creates a formatted panel with average rating display and horizontal
+    bar chart showing distribution across all five rating levels. Bars
+    are color-coded from green (5 stars) to red (1 star).
+
+    Business context: Effectiveness distribution reveals AI output quality
+    patterns. A left-skewed distribution (mostly 4-5 stars) indicates
+    effective prompting; right-skewed suggests workflow improvements needed.
+
+    Args:
+        eff: EffectivenessViewModel object containing distribution dict
+            (rating -> count), average score, and total_interactions.
+            Type is 'object' to avoid import cycles.
+
+    Returns:
+        HTML string containing panel title, large average display,
+        interaction count label, and CSS-styled horizontal bar chart
+        with width percentages based on rating frequencies.
+
+    Raises:
+        None: Template string construction never raises.
+
+    Example:
+        >>> eff = presenter.get_effectiveness()
+        >>> html = _render_effectiveness_panel(eff)
+        >>> '⭐ Effectiveness' in html
+        True
+    """
     from ..presenters import EffectivenessViewModel
 
     e: EffectivenessViewModel = eff  # type: ignore[assignment]

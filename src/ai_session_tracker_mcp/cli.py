@@ -28,14 +28,63 @@ from pathlib import Path
 
 
 def run_server() -> None:
-    """Run the MCP server."""
+    """
+    Run the MCP server in stdio mode.
+
+    Starts the AI Session Tracker MCP server which communicates via
+    stdin/stdout using JSON-RPC 2.0 protocol. This is the default
+    command and the mode used by VS Code for MCP integration.
+
+    Business context: The MCP server is the core component that enables
+    AI assistants in VS Code to track sessions, log interactions, and
+    calculate ROI metrics during development workflows.
+
+    Returns:
+        None. Blocks until server shutdown (EOF on stdin).
+
+    Raises:
+        OSError: If storage directory cannot be created.
+
+    Example:
+        >>> # From command line:
+        >>> # ai-session-tracker server
+        >>> run_server()  # Blocks until Ctrl+C or client disconnect
+    """
     from .server import main
 
     asyncio.run(main())
 
 
 def run_dashboard(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Launch the web dashboard."""
+    """
+    Launch the web dashboard for visual analytics.
+
+    Starts a FastAPI server hosting the AI Session Tracker dashboard.
+    The dashboard provides real-time visualization of sessions, ROI
+    metrics, and effectiveness charts using htmx for live updates.
+
+    Business context: The dashboard is the primary interface for
+    stakeholders to review AI productivity metrics. It provides
+    visual ROI justification and helps identify patterns in usage.
+
+    Args:
+        host: Network interface to bind to. Default '127.0.0.1' for
+            local-only access. Use '0.0.0.0' for network access.
+        port: TCP port for the HTTP server. Default 8000.
+
+    Returns:
+        None. Blocks until server shutdown (Ctrl+C).
+
+    Raises:
+        OSError: If port is already in use.
+        ImportError: If FastAPI/uvicorn are not installed.
+
+    Example:
+        >>> # From command line:
+        >>> # ai-session-tracker dashboard --port 3000
+        >>> run_dashboard(port=3000)
+        🚀 Starting dashboard at http://127.0.0.1:3000
+    """
     from .web import run_dashboard as start_web
 
     print(f"🚀 Starting dashboard at http://{host}:{port}")
@@ -44,7 +93,31 @@ def run_dashboard(host: str = "127.0.0.1", port: int = 8000) -> None:
 
 
 def run_report() -> None:
-    """Print text analytics report to stdout."""
+    """
+    Print text analytics report to stdout.
+
+    Generates and prints a comprehensive text report containing session
+    summary, ROI metrics, effectiveness distribution, issue summary,
+    and code quality metrics. Suitable for terminal viewing or piping.
+
+    Business context: The text report provides a quick CLI-accessible
+    summary for developers who want metrics without opening a browser.
+    Can be redirected to files or used in scripts.
+
+    Returns:
+        None. Report is printed to stdout.
+
+    Raises:
+        OSError: If storage directory cannot be accessed.
+
+    Example:
+        >>> # From command line:
+        >>> # ai-session-tracker report > metrics.txt
+        >>> run_report()
+        ==================================================
+        AI SESSION TRACKER - ANALYTICS REPORT
+        ...
+    """
     from .statistics import StatisticsEngine
     from .storage import StorageManager
 
@@ -61,11 +134,35 @@ def run_report() -> None:
 
 def run_init() -> None:
     """
-    Create .vscode/mcp.json, chatmodes, and instructions in current directory.
+    Initialize AI Session Tracker for the current project.
 
-    Creates or updates the VS Code MCP config file to include
-    the ai-session-tracker MCP server, plus copies chatmode and
-    instruction files for agent configuration.
+    Creates or updates .vscode/mcp.json to include the ai-session-tracker
+    MCP server configuration, and copies chatmode and instruction files
+    to .github/ for VS Code agent integration.
+
+    Business context: Initialization is the first step for new projects.
+    It sets up the MCP configuration so VS Code recognizes the session
+    tracker and provides the chatmode for tracked agent workflows.
+
+    Files created/updated:
+    - .vscode/mcp.json: MCP server configuration
+    - .github/chatmodes/: Session tracking chat modes
+    - .github/instructions/: AI instruction files
+
+    Returns:
+        None. Progress messages printed to stdout.
+
+    Raises:
+        PermissionError: If directory creation fails.
+        JSONDecodeError: If existing mcp.json is invalid (creates backup).
+
+    Example:
+        >>> # From command line in project root:
+        >>> # ai-session-tracker init
+        >>> run_init()
+        📄 Creating new config: .vscode/mcp.json
+        ➕ Adding ai-session-tracker to MCP servers
+        ✅ Successfully installed ai-session-tracker
     """
     import shutil
 
@@ -157,10 +254,33 @@ def run_init() -> None:
 
 def main() -> int:
     """
-    Main CLI entry point.
+    Main CLI entry point for AI Session Tracker.
+
+    Parses command-line arguments and dispatches to the appropriate
+    subcommand handler: server, dashboard, report, or init. If no
+    subcommand is specified, defaults to running the MCP server.
+
+    Business context: This is the entry point installed as the
+    'ai-session-tracker' console script. It provides a unified
+    interface for all tracker functionality.
+
+    Subcommands:
+    - server: Run MCP server (default)
+    - dashboard [--host HOST] [--port PORT]: Launch web dashboard
+    - report: Print text analytics report
+    - init: Initialize project with MCP configuration
 
     Returns:
-        Exit code (0 for success).
+        Exit code 0 for success. Non-zero codes reserved for future
+        error handling.
+
+    Raises:
+        SystemExit: On --help or argument parsing errors.
+
+    Example:
+        >>> # From command line:
+        >>> # ai-session-tracker dashboard --port 8080
+        >>> sys.exit(main())  # Typical usage pattern
     """
     parser = argparse.ArgumentParser(
         prog="ai-session-tracker",

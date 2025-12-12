@@ -51,11 +51,36 @@ class StatisticsEngine:
         ai_monthly_cost: float | None = None,
     ) -> None:
         """
-        Initialize with cost parameters.
+        Initialize statistics engine with configurable cost parameters.
+
+        Creates a new statistics engine instance with custom or default cost
+        settings for ROI calculations. Defaults come from Config class which
+        provides reasonable baseline values for typical enterprise settings.
+
+        Business context: Different organizations have different cost structures.
+        Allowing custom rates enables accurate ROI calculations that reflect
+        actual organizational costs rather than industry averages.
 
         Args:
-            human_hourly_rate: Override Config.HUMAN_HOURLY_RATE
-            ai_monthly_cost: Override Config.AI_MONTHLY_COST
+            human_hourly_rate: Fully-burdened developer cost in USD/hour.
+                Includes salary, benefits (30%), and overhead (40%).
+                Default: Config.HUMAN_HOURLY_RATE ($130.00)
+            ai_monthly_cost: Monthly AI subscription cost in USD.
+                Typically includes Copilot ($20) + ChatGPT/Claude ($20).
+                Default: Config.AI_MONTHLY_COST ($40.00)
+
+        Raises:
+            TypeError: If rate parameters are not numeric when provided.
+
+        Example:
+            >>> # Use default rates
+            >>> engine = StatisticsEngine()
+            >>> engine.human_hourly_rate
+            130.0
+            >>> # Custom rates for different organization
+            >>> engine = StatisticsEngine(human_hourly_rate=150.0, ai_monthly_cost=60.0)
+            >>> engine.ai_hourly_rate
+            0.375
         """
         self.human_hourly_rate = human_hourly_rate or Config.HUMAN_HOURLY_RATE
         self.ai_monthly_cost = ai_monthly_cost or Config.AI_MONTHLY_COST
@@ -63,13 +88,37 @@ class StatisticsEngine:
 
     def calculate_session_duration_minutes(self, session: dict[str, Any]) -> float:
         """
-        Calculate session duration in minutes.
+        Calculate session duration in minutes from start and end timestamps.
+
+        Parses ISO 8601 timestamps and computes the difference. Handles both
+        'Z' suffix and '+00:00' timezone formats for UTC times. Returns 0
+        for invalid or missing timestamps to ensure downstream calculations
+        don't fail.
+
+        Business context: Session duration is a key metric for ROI calculation.
+        It represents actual AI-assisted work time that's compared against
+        human baseline estimates to compute productivity gains.
 
         Args:
-            session: Session data with start_time, end_time
+            session: Session data dict containing 'start_time' and 'end_time'
+                keys with ISO 8601 formatted datetime strings. Both must be
+                present and valid for a non-zero result.
 
         Returns:
-            Duration in minutes. 0 if timestamps invalid.
+            Duration in minutes as float. Returns 0.0 if either timestamp
+            is missing, empty, or cannot be parsed as ISO 8601 datetime.
+
+        Raises:
+            TypeError: If session is not a dict.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> session = {
+            ...     'start_time': '2025-01-01T10:00:00+00:00',
+            ...     'end_time': '2025-01-01T10:30:00+00:00'
+            ... }
+            >>> engine.calculate_session_duration_minutes(session)
+            30.0
         """
         start_str = session.get("start_time", "")
         end_str = session.get("end_time", "")
@@ -93,13 +142,41 @@ class StatisticsEngine:
         self, interactions: list[dict[str, Any]]
     ) -> dict[int, int]:
         """
-        Count interactions by effectiveness rating.
+        Count interactions by effectiveness rating to show rating distribution.
+
+        Aggregates all interactions into a histogram of effectiveness ratings,
+        providing insight into overall AI performance quality. The distribution
+        helps identify whether AI outputs are consistently high quality or if
+        there are patterns of low-rated interactions needing investigation.
+
+        Business context: This distribution is displayed in dashboards and reports
+        to give stakeholders a quick visual understanding of AI effectiveness.
+        A left-skewed distribution (more 4s and 5s) indicates healthy AI adoption.
 
         Args:
-            interactions: List of interaction records
+            interactions: List of interaction records, each containing an
+                'effectiveness_rating' key with integer value 1-5. Ratings
+                outside this range are ignored.
 
         Returns:
-            Dict of rating (1-5) -> count
+            Dict mapping each rating (1-5) to its count. All five keys are
+            always present, with zero values for ratings with no interactions.
+            Example: {1: 0, 2: 2, 3: 5, 4: 10, 5: 8}
+
+        Raises:
+            TypeError: If interactions is not a list.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> dist = engine.calculate_effectiveness_distribution([
+            ...     {'effectiveness_rating': 5},
+            ...     {'effectiveness_rating': 4},
+            ...     {'effectiveness_rating': 5}
+            ... ])
+            >>> dist[5]
+            2
+            >>> dist[1]
+            0
         """
         dist: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         for interaction in interactions:
@@ -110,13 +187,36 @@ class StatisticsEngine:
 
     def calculate_average_effectiveness(self, interactions: list[dict[str, Any]]) -> float:
         """
-        Calculate mean effectiveness rating.
+        Calculate mean effectiveness rating across all interactions.
+
+        Computes the arithmetic mean of effectiveness ratings to provide
+        a single summary metric for AI performance quality. This metric
+        is displayed prominently in dashboards and reports.
+
+        Business context: Average effectiveness is a key performance indicator
+        for AI adoption success. Target is typically 3.5+ indicating AI outputs
+        require only minor adjustments on average.
 
         Args:
-            interactions: List of interaction records
+            interactions: List of interaction records, each containing an
+                'effectiveness_rating' key with integer value 1-5.
 
         Returns:
-            Average rating (1-5 scale). 0 if no interactions.
+            Mean rating as float on 1-5 scale. Returns 0.0 if the
+            interactions list is empty to avoid division by zero.
+
+        Raises:
+            TypeError: If interactions is not a list.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> avg = engine.calculate_average_effectiveness([
+            ...     {'effectiveness_rating': 5},
+            ...     {'effectiveness_rating': 4},
+            ...     {'effectiveness_rating': 3}
+            ... ])
+            >>> avg
+            4.0
         """
         if not interactions:
             return 0.0
@@ -126,13 +226,41 @@ class StatisticsEngine:
 
     def calculate_issue_summary(self, issues: list[dict[str, Any]]) -> dict[str, Any]:
         """
-        Summarize issues by type and severity.
+        Aggregate issues by type and severity for trend analysis.
+
+        Groups flagged AI issues into summary statistics that help identify
+        patterns in AI failures. This enables teams to focus improvement
+        efforts on the most common or severe issue categories.
+
+        Business context: Issue tracking is essential for AI adoption success.
+        High counts of 'hallucination' or 'incorrect_output' issues may indicate
+        need for better prompting strategies or model selection changes.
 
         Args:
-            issues: List of issue records
+            issues: List of issue records, each containing 'issue_type' (str)
+                and 'severity' (str: 'low', 'medium', 'high', 'critical') keys.
+                Missing keys default to 'unknown'.
 
         Returns:
-            Dict with by_type and by_severity counts.
+            Dict with three keys:
+            - 'total': int - Total number of issues
+            - 'by_type': dict[str, int] - Count per issue type
+            - 'by_severity': dict[str, int] - Count per severity level
+            Example: {'total': 5, 'by_type': {'hallucination': 2}, 'by_severity': {'high': 1}}
+
+        Raises:
+            TypeError: If issues is not a list.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> summary = engine.calculate_issue_summary([
+            ...     {'issue_type': 'hallucination', 'severity': 'high'},
+            ...     {'issue_type': 'incorrect_output', 'severity': 'medium'}
+            ... ])
+            >>> summary['total']
+            2
+            >>> summary['by_severity']['high']
+            1
         """
         by_type: dict[str, int] = {}
         by_severity: dict[str, int] = {}
@@ -152,13 +280,46 @@ class StatisticsEngine:
 
     def calculate_code_metrics_summary(self, sessions: dict[str, Any]) -> dict[str, Any]:
         """
-        Aggregate code metrics across all sessions.
+        Aggregate code quality metrics across all sessions.
+
+        Collects and summarizes code metrics from all sessions including
+        function counts, lines of code changes, complexity scores, and
+        documentation quality. Provides both totals and averages.
+
+        Business context: Code metrics demonstrate the tangible output of
+        AI-assisted development. Total effort scores help quantify the
+        volume of work completed, while quality metrics (complexity, docs)
+        ensure AI isn't just fast but also producing maintainable code.
 
         Args:
-            sessions: Dict of session_id -> session_data
+            sessions: Dict of session_id -> session_data where each session
+                may contain a 'code_metrics' list of file-level metrics,
+                each with 'functions' containing individual function metrics.
 
         Returns:
-            Summary with totals and averages for complexity, docs, effort.
+            Dict with aggregated metrics:
+            - 'total_functions': int - Number of functions analyzed
+            - 'total_lines_added': int - Sum of lines added by AI
+            - 'total_lines_modified': int - Sum of lines modified
+            - 'avg_complexity': float - Average cyclomatic complexity
+            - 'avg_doc_score': float - Average documentation quality (0-100)
+            - 'total_effort_score': float - Sum of effort scores
+
+        Raises:
+            TypeError: If sessions is not a dict.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> summary = engine.calculate_code_metrics_summary({
+            ...     's1': {'code_metrics': [{'functions': [
+            ...         {'context': {'final_complexity': 5},
+            ...          'documentation': {'quality_score': 80},
+            ...          'value_metrics': {'effort_score': 10.0},
+            ...          'ai_contribution': {'lines_added': 50, 'lines_modified': 10}}
+            ...     ]}]}
+            ... })
+            >>> summary['total_functions']
+            1
         """
         total_functions = 0
         total_complexity = 0
@@ -195,20 +356,50 @@ class StatisticsEngine:
         interactions: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """
-        Calculate comprehensive ROI metrics.
+        Calculate comprehensive ROI metrics for AI-assisted development.
 
-        METHODOLOGY:
-        1. Sum actual AI session time from completed sessions
-        2. Estimate human baseline time (AI time * 3 as conservative estimate)
-        3. Calculate costs using hourly rates
-        4. Compute savings and ROI percentage
+        Computes time savings, cost savings, and productivity metrics by comparing
+        actual AI-assisted time against estimated human baseline. Uses a conservative
+        3x multiplier assumption (AI is 3x faster than human for tracked tasks).
+
+        Business context: ROI metrics are the primary justification for AI tool
+        investment. This calculation provides the data needed for budget discussions,
+        tool adoption decisions, and productivity improvement tracking.
+
+        Methodology:
+        1. Filter to productive sessions only (excludes 'human_review' task type)
+        2. Sum actual AI session time from completed sessions
+        3. Estimate human baseline time (AI time × 3 as conservative estimate)
+        4. Calculate costs: human cost vs (AI subscription + human oversight)
+        5. Compute savings and ROI percentage
 
         Args:
-            sessions: Dict of session_id -> session_data
-            interactions: List of interaction records
+            sessions: Dict of session_id -> session_data containing completed
+                sessions with start_time, end_time, status, and task_type.
+            interactions: List of interaction records for productivity metrics
+                calculation (average effectiveness, interactions per session).
 
         Returns:
-            Dict with time_metrics, cost_metrics, productivity_metrics.
+            Nested dict with three sections:
+            - 'time_metrics': total_ai_minutes, total_ai_hours, estimated_human_hours,
+              time_saved_hours, completed_sessions
+            - 'cost_metrics': human_baseline_cost, ai_subscription_cost, oversight_cost,
+              total_ai_cost, cost_saved, roi_percentage
+            - 'productivity_metrics': total_interactions, average_effectiveness,
+              interactions_per_session
+            - 'config': Applied cost parameters for transparency
+
+        Raises:
+            TypeError: If sessions is not a dict or interactions is not a list.
+
+        Example:
+            >>> engine = StatisticsEngine(human_hourly_rate=100.0)
+            >>> roi = engine.calculate_roi_metrics(
+            ...     sessions={'s1': {'status': 'completed', 'start_time': '...'}},
+            ...     interactions=[]
+            ... )
+            >>> roi['cost_metrics']['roi_percentage']
+            66.7  # Example: 66.7% ROI
         """
         # Filter to productive sessions only
         productive = Config.filter_productive_sessions(sessions)
@@ -283,15 +474,45 @@ class StatisticsEngine:
         issues: list[dict[str, Any]],
     ) -> str:
         """
-        Generate text summary of all metrics.
+        Generate comprehensive text summary of all AI productivity metrics.
+
+        Creates a formatted analytics report combining session statistics, ROI metrics,
+        effectiveness distribution, issue summary, and code quality metrics. The report
+        is designed for terminal/console display and provides stakeholders with a
+        complete overview of AI-assisted development performance.
+
+        Business context: This report serves as the primary deliverable for ROI
+        justification to management and helps teams identify productivity patterns
+        and areas needing improvement in AI-assisted workflows.
 
         Args:
-            sessions: Dict of session_id -> session_data
-            interactions: List of interaction records
-            issues: List of issue records
+            sessions: Dict of session_id -> session_data containing all tracked
+                sessions with their metadata, duration, and outcome information.
+            interactions: List of interaction records with effectiveness ratings,
+                prompts, and response summaries from AI exchanges.
+            issues: List of flagged issue records with type, severity, and
+                descriptions of problematic AI interactions.
 
         Returns:
-            Formatted text report suitable for display.
+            Multi-line formatted text report with emoji icons, section headers,
+            and aligned metrics. Includes session counts, ROI percentages, cost
+            savings, effectiveness distribution (star ratings), issue breakdown
+            by severity, and code quality averages.
+
+        Raises:
+            TypeError: If sessions is not a dict or interactions/issues are not lists.
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> report = engine.generate_summary_report(
+            ...     sessions={'s1': {...}},
+            ...     interactions=[{'effectiveness_rating': 4, ...}],
+            ...     issues=[{'severity': 'medium', ...}]
+            ... )
+            >>> print(report)
+            ==================================================
+            AI SESSION TRACKER - ANALYTICS REPORT
+            ...
         """
         roi = self.calculate_roi_metrics(sessions, interactions)
         effectiveness_dist = self.calculate_effectiveness_distribution(interactions)
