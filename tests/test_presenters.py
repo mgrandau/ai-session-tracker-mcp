@@ -1236,3 +1236,275 @@ class TestSessionGapViewModel:
             classification="long_break",
         )
         assert vm.classification_class == "gap-long-break"
+
+
+class TestSessionGapsViewModel:
+    """Tests for SessionGapsViewModel properties and methods."""
+
+    def test_average_display_minutes(self) -> None:
+        """Verifies average_display shows minutes for < 60min."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=3,
+            average_gap_minutes=30.0,
+            by_classification={"normal": 3},
+            friction_indicators=[],
+        )
+        assert vm.average_display == "30m"
+
+    def test_average_display_hours(self) -> None:
+        """Verifies average_display shows hours for >= 60min."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=3,
+            average_gap_minutes=90.0,
+            by_classification={"extended": 3},
+            friction_indicators=[],
+        )
+        assert vm.average_display == "1.5h"
+
+    def test_has_friction_true(self) -> None:
+        """Verifies has_friction returns True when indicators exist."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=5,
+            average_gap_minutes=60.0,
+            by_classification={"long_break": 3},
+            friction_indicators=["High frequency of long breaks"],
+        )
+        assert vm.has_friction is True
+
+    def test_has_friction_false(self) -> None:
+        """Verifies has_friction returns False when no indicators."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=3,
+            average_gap_minutes=15.0,
+            by_classification={"quick": 3},
+            friction_indicators=[],
+        )
+        assert vm.has_friction is False
+
+    def test_classification_count_existing(self) -> None:
+        """Verifies classification_count returns correct count for known type."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=10,
+            average_gap_minutes=30.0,
+            by_classification={"quick": 3, "normal": 5, "extended": 2},
+            friction_indicators=[],
+        )
+        assert vm.classification_count("quick") == 3
+        assert vm.classification_count("normal") == 5
+        assert vm.classification_count("extended") == 2
+
+    def test_classification_count_missing(self) -> None:
+        """Verifies classification_count returns 0 for unknown type."""
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+
+        vm = SessionGapsViewModel(
+            gaps=[],
+            total_gaps=3,
+            average_gap_minutes=30.0,
+            by_classification={"normal": 3},
+            friction_indicators=[],
+        )
+        assert vm.classification_count("long_break") == 0
+        assert vm.classification_count("unknown_type") == 0
+
+
+class TestFormatDuration:
+    """Tests for _format_duration helper function."""
+
+    def test_format_duration_minutes(self) -> None:
+        """Verifies _format_duration shows minutes for < 60."""
+        from ai_session_tracker_mcp.presenters import _format_duration
+
+        assert _format_duration(0) == "0m"
+        assert _format_duration(15) == "15m"
+        assert _format_duration(45.5) == "46m"
+        assert _format_duration(59) == "59m"
+
+    def test_format_duration_hours(self) -> None:
+        """Verifies _format_duration shows hours for >= 60."""
+        from ai_session_tracker_mcp.presenters import _format_duration
+
+        assert _format_duration(60) == "1.0h"
+        assert _format_duration(90) == "1.5h"
+        assert _format_duration(120) == "2.0h"
+        assert _format_duration(150) == "2.5h"
+
+
+class TestStatusColors:
+    """Tests for STATUS_COLORS constant."""
+
+    def test_status_colors_contains_expected_keys(self) -> None:
+        """Verifies STATUS_COLORS has all expected status colors."""
+        from ai_session_tracker_mcp.presenters import STATUS_COLORS
+
+        assert "completed" in STATUS_COLORS
+        assert "active" in STATUS_COLORS
+        assert "default" in STATUS_COLORS
+
+    def test_status_colors_values_are_hex(self) -> None:
+        """Verifies STATUS_COLORS values are valid hex color codes."""
+        from ai_session_tracker_mcp.presenters import STATUS_COLORS
+
+        for color in STATUS_COLORS.values():
+            assert color.startswith("#")
+            assert len(color) == 7  # #RRGGBB format
+
+
+class TestEffectivenessColors:
+    """Tests for EFFECTIVENESS_COLORS constant."""
+
+    def test_effectiveness_colors_contains_ratings(self) -> None:
+        """Verifies EFFECTIVENESS_COLORS has all rating levels 1-5."""
+        from ai_session_tracker_mcp.presenters import EFFECTIVENESS_COLORS
+
+        for rating in range(1, 6):
+            assert rating in EFFECTIVENESS_COLORS
+
+    def test_effectiveness_colors_values_are_hex(self) -> None:
+        """Verifies EFFECTIVENESS_COLORS values are valid hex color codes."""
+        from ai_session_tracker_mcp.presenters import EFFECTIVENESS_COLORS
+
+        for color in EFFECTIVENESS_COLORS.values():
+            assert color.startswith("#")
+            assert len(color) == 7
+
+
+class TestChartPresenterHelpers:
+    """Tests for ChartPresenter helper methods."""
+
+    def test_status_to_color_completed(self) -> None:
+        """Verifies _status_to_color maps completed status."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        from ai_session_tracker_mcp.presenters import STATUS_COLORS
+
+        assert presenter._status_to_color("completed") == STATUS_COLORS["completed"]
+
+    def test_status_to_color_active(self) -> None:
+        """Verifies _status_to_color maps active status."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        from ai_session_tracker_mcp.presenters import STATUS_COLORS
+
+        assert presenter._status_to_color("active") == STATUS_COLORS["active"]
+
+    def test_status_to_color_unknown(self) -> None:
+        """Verifies _status_to_color returns default for unknown status."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        from ai_session_tracker_mcp.presenters import STATUS_COLORS
+
+        assert presenter._status_to_color("unknown") == STATUS_COLORS["default"]
+        assert presenter._status_to_color("abandoned") == STATUS_COLORS["default"]
+
+    def test_parse_session_for_timeline_valid(self) -> None:
+        """Verifies _parse_session_for_timeline extracts valid data."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        session = {
+            "start_time": "2024-01-15T10:00:00Z",
+            "end_time": "2024-01-15T11:00:00Z",
+            "status": "completed",
+        }
+        result = presenter._parse_session_for_timeline(session)
+        assert result is not None
+        start_dt, duration, status = result
+        assert status == "completed"
+        assert duration == 60.0  # 1 hour
+
+    def test_parse_session_for_timeline_no_start(self) -> None:
+        """Verifies _parse_session_for_timeline returns None without start_time."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        session = {"end_time": "2024-01-15T11:00:00Z", "status": "completed"}
+        result = presenter._parse_session_for_timeline(session)
+        assert result is None
+
+    def test_parse_session_for_timeline_invalid_time(self) -> None:
+        """Verifies _parse_session_for_timeline returns None for invalid timestamp."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        session = {
+            "start_time": "invalid-timestamp",
+            "status": "completed",
+        }
+        result = presenter._parse_session_for_timeline(session)
+        assert result is None
+
+
+class TestDashboardPresenterHelpers:
+    """Tests for DashboardPresenter helper methods."""
+
+    def test_group_interactions_by_session_empty(self) -> None:
+        """Verifies _group_interactions_by_session handles empty list."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = DashboardPresenter(mock_storage, stats)
+
+        result = presenter._group_interactions_by_session([])
+        assert result == {}
+
+    def test_group_interactions_by_session_multiple(self) -> None:
+        """Verifies _group_interactions_by_session groups correctly."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = DashboardPresenter(mock_storage, stats)
+
+        interactions = [
+            {"session_id": "s1", "effectiveness_rating": 5},
+            {"session_id": "s2", "effectiveness_rating": 4},
+            {"session_id": "s1", "effectiveness_rating": 3},
+        ]
+        result = presenter._group_interactions_by_session(interactions)
+        assert len(result["s1"]) == 2
+        assert len(result["s2"]) == 1
+
+    def test_calculate_session_effectiveness_empty(self) -> None:
+        """Verifies _calculate_session_effectiveness returns 0 for empty list."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = DashboardPresenter(mock_storage, stats)
+
+        result = presenter._calculate_session_effectiveness([])
+        assert result == 0.0
+
+    def test_calculate_session_effectiveness_average(self) -> None:
+        """Verifies _calculate_session_effectiveness computes correct average."""
+        mock_storage = MagicMock(spec=StorageManager)
+        stats = StatisticsEngine()
+        presenter = DashboardPresenter(mock_storage, stats)
+
+        interactions = [
+            {"effectiveness_rating": 5},
+            {"effectiveness_rating": 4},
+            {"effectiveness_rating": 3},
+        ]
+        result = presenter._calculate_session_effectiveness(interactions)
+        assert result == 4.0  # (5+4+3)/3

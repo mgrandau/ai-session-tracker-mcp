@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .config import Config
 from .filesystem import RealFileSystem
+
+__all__ = ["StorageManager"]
 
 if TYPE_CHECKING:
     from .filesystem import FileSystem
@@ -58,9 +60,10 @@ class StorageManager:
     Creates directory structure and empty JSON files if missing.
     Uses exist_ok=True for safe concurrent initialization.
 
-    THREAD SAFETY:
-    Not thread-safe. For multi-threaded use, wrap calls with locks.
-    Single-writer assumed (one MCP server process).
+    THREAD SAFETY WARNING:
+    NOT THREAD-SAFE. For multi-threaded use, wrap ALL calls with locks.
+    Single-writer assumed (one MCP server process). Concurrent writes
+    may cause data loss or corruption.
     """
 
     def __init__(
@@ -99,10 +102,11 @@ class StorageManager:
         """
         self.storage_dir = storage_dir or Config.STORAGE_DIR
         self._fs: FileSystem = filesystem or RealFileSystem()
-        self.sessions_file = os.path.join(self.storage_dir, Config.SESSIONS_FILE)
-        self.interactions_file = os.path.join(self.storage_dir, Config.INTERACTIONS_FILE)
-        self.issues_file = os.path.join(self.storage_dir, Config.ISSUES_FILE)
-        self.charts_dir = os.path.join(self.storage_dir, Config.CHARTS_DIR)
+        storage_path = Path(self.storage_dir)
+        self.sessions_file = str(storage_path / Config.SESSIONS_FILE)
+        self.interactions_file = str(storage_path / Config.INTERACTIONS_FILE)
+        self.issues_file = str(storage_path / Config.ISSUES_FILE)
+        self.charts_dir = str(storage_path / Config.CHARTS_DIR)
 
         self._initialize_storage()
 
@@ -149,6 +153,21 @@ class StorageManager:
             logger.info(f"Storage initialized: {self.storage_dir}")
         except OSError as e:
             logger.error(f"Failed to initialize storage: {e}")
+
+    def _filter_by_session(
+        self, items: list[dict[str, Any]], session_id: str
+    ) -> list[dict[str, Any]]:
+        """
+        Filter a list of items by session_id.
+
+        Args:
+            items: List of dicts containing 'session_id' key.
+            session_id: The session identifier to filter by.
+
+        Returns:
+            Filtered list containing only items matching the session_id.
+        """
+        return [item for item in items if item.get("session_id") == session_id]
 
     def _read_json(self, file_path: str, default: Any) -> Any:
         """
@@ -511,8 +530,7 @@ class StorageManager:
             >>> print(f"Session has {len(interactions)} interactions")
             >>> avg = sum(i['effectiveness_rating'] for i in interactions) / len(interactions)
         """
-        interactions = self.load_interactions()
-        return [i for i in interactions if i.get("session_id") == session_id]
+        return self._filter_by_session(self.load_interactions(), session_id)
 
     # =========================================================================
     # ISSUE OPERATIONS
@@ -651,8 +669,7 @@ class StorageManager:
             >>> for issue in issues:
             ...     print(f"  [{issue['severity']}] {issue['issue_type']}")
         """
-        issues = self.load_issues()
-        return [i for i in issues if i.get("session_id") == session_id]
+        return self._filter_by_session(self.load_issues(), session_id)
 
     # =========================================================================
     # MAINTENANCE OPERATIONS
@@ -688,10 +705,9 @@ class StorageManager:
             >>> len(storage.load_sessions())
             0
         """
-        success = True
-        success &= self._write_json(self.sessions_file, {})
-        success &= self._write_json(self.interactions_file, [])
-        success &= self._write_json(self.issues_file, [])
+        success = self._write_json(self.sessions_file, {})
+        success = success and self._write_json(self.interactions_file, [])
+        success = success and self._write_json(self.issues_file, [])
         if success:
             logger.info("All data files cleared")
         return success

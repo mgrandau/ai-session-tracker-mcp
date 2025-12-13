@@ -20,7 +20,11 @@ USAGE:
 
 from __future__ import annotations
 
+import os
+import shutil
 from typing import Protocol
+
+__all__ = ["FileSystem", "RealFileSystem"]
 
 
 class FileSystem(Protocol):
@@ -164,6 +168,12 @@ class FileSystem(Protocol):
 
         Example:
             >>> fs.write_text('/data/sessions.json', '{}')
+        """
+        ...
+
+    def chmod(self, path: str, mode: int) -> None:
+        """
+        Change file permissions.
 
         Business context: Can be used to set restrictive permissions
         on sensitive configuration files. Mock implementation simulates
@@ -305,8 +315,6 @@ class RealFileSystem:
             >>> fs.exists('/tmp/sessions.json')
             False
         """
-        import os
-
         return os.path.exists(path)
 
     def is_file(self, path: str) -> bool:  # pragma: no cover
@@ -330,8 +338,6 @@ class RealFileSystem:
             >>> fs.is_file('/etc/passwd')
             True
         """
-        import os
-
         return os.path.isfile(path)
 
     def is_dir(self, path: str) -> bool:  # pragma: no cover
@@ -355,8 +361,6 @@ class RealFileSystem:
             >>> fs.is_dir('/tmp')
             True
         """
-        import os
-
         return os.path.isdir(path)
 
     def makedirs(self, path: str, exist_ok: bool = False) -> None:  # pragma: no cover
@@ -380,8 +384,6 @@ class RealFileSystem:
             >>> fs = RealFileSystem()
             >>> fs.makedirs('/tmp/data/sessions', exist_ok=True)
         """
-        import os
-
         os.makedirs(path, exist_ok=exist_ok)
 
     def read_text(self, path: str, encoding: str = "utf-8") -> str:  # pragma: no cover
@@ -461,8 +463,6 @@ class RealFileSystem:
             >>> fs = RealFileSystem()
             >>> fs.chmod('/tmp/config.json', 0o600)
         """
-        import os
-
         os.chmod(path, mode)
 
     def remove(self, path: str) -> None:  # pragma: no cover
@@ -486,8 +486,6 @@ class RealFileSystem:
             >>> fs = RealFileSystem()
             >>> fs.remove('/tmp/old_sessions.json')
         """
-        import os
-
         os.remove(path)
 
     def iterdir(self, path: str) -> list[str]:  # pragma: no cover
@@ -511,8 +509,6 @@ class RealFileSystem:
             >>> fs.iterdir('/tmp/data')
             ['/tmp/data/sessions.json']
         """
-        import os
-
         return [os.path.join(path, name) for name in os.listdir(path)]
 
     def copy_file(self, src: str, dst: str) -> None:  # pragma: no cover
@@ -532,8 +528,6 @@ class RealFileSystem:
             >>> fs = RealFileSystem()
             >>> fs.copy_file('/pkg/template.md', '/project/template.md')
         """
-        import shutil
-
         shutil.copy2(src, dst)
 
     def rename(self, src: str, dst: str) -> None:  # pragma: no cover
@@ -551,6 +545,4 @@ class RealFileSystem:
             >>> fs = RealFileSystem()
             >>> fs.rename('/tmp/config.json', '/tmp/config.json.bak')
         """
-        import os
-
         os.rename(src, dst)

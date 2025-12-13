@@ -515,6 +515,72 @@ class TestConfigEnvironmentSettings:
         assert Config._s3_backup_override is None
         assert Config._project_id_override is None
 
+    def test_override_for_test_context_manager(self) -> None:
+        """Verifies context manager sets and resets overrides.
+
+        Tests that override_for_test provides cleaner test isolation.
+
+        Business context:
+        Context manager pattern ensures automatic cleanup even if
+        test raises exception. Prevents test pollution.
+
+        Arrangement:
+        Confirm default state before context.
+
+        Action:
+        Use override_for_test context manager with test values.
+
+        Assertion Strategy:
+        Validates overrides active inside context, reset outside.
+
+        Testing Principle:
+        Validates context manager lifecycle.
+        """
+        # Before context: defaults apply
+        with patch.dict(os.environ, {}, clear=True):
+            assert Config.is_s3_backup_enabled() is False
+
+        # Inside context: overrides active
+        with Config.override_for_test(s3_enabled=True, project_id="ctx-test"):
+            assert Config.is_s3_backup_enabled() is True
+            assert Config.get_project_id() == "ctx-test"
+
+        # After context: automatically reset
+        assert Config._s3_backup_override is None
+        assert Config._project_id_override is None
+
+    def test_override_for_test_resets_on_exception(self) -> None:
+        """Verifies context manager resets even on exception.
+
+        Tests that cleanup occurs even if test code raises.
+
+        Business context:
+        Exception safety is critical for test isolation. A failing
+        test should not pollute subsequent tests.
+
+        Arrangement:
+        Set up context manager with overrides.
+
+        Action:
+        Raise exception inside context.
+
+        Assertion Strategy:
+        Validates overrides are reset despite exception.
+
+        Testing Principle:
+        Validates exception-safe cleanup.
+        """
+        with (
+            pytest.raises(ValueError),
+            Config.override_for_test(s3_enabled=True, project_id="exc-test"),
+        ):
+            assert Config.is_s3_backup_enabled() is True
+            raise ValueError("Simulated test failure")
+
+        # Cleanup should still have occurred
+        assert Config._s3_backup_override is None
+        assert Config._project_id_override is None
+
 
 class TestConfigFilterProductiveSessions:
     """Tests for session filtering."""

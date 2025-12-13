@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+__all__ = ["Session", "Interaction", "Issue", "FunctionMetrics"]
 
-def _now_iso() -> str:
+
+def _now_iso(*, _now: datetime | None = None) -> str:
     """
     Get current UTC time as ISO 8601 formatted string.
 
@@ -39,7 +41,8 @@ def _now_iso() -> str:
     chronological sorting and duration calculations across sessions.
 
     Args:
-        None: Pure function with no parameters.
+        _now: Optional datetime for test injection. If None, uses current time.
+            Keyword-only to prevent accidental positional use.
 
     Returns:
         ISO 8601 formatted datetime string, e.g., '2025-12-01T10:30:00+00:00'.
@@ -51,11 +54,15 @@ def _now_iso() -> str:
         >>> ts = _now_iso()
         >>> '+00:00' in ts or 'Z' in ts
         True
+        >>> from datetime import datetime, UTC
+        >>> _now_iso(_now=datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC))
+        '2025-01-01T12:00:00+00:00'
     """
-    return datetime.now(UTC).isoformat()
+    now = _now or datetime.now(UTC)
+    return now.isoformat()
 
 
-def _generate_session_id(name: str) -> str:
+def _generate_session_id(name: str, *, _now: datetime | None = None) -> str:
     """
     Generate a unique session ID from name and current timestamp.
 
@@ -71,6 +78,8 @@ def _generate_session_id(name: str) -> str:
         name: Session name to incorporate (e.g., 'Add user authentication').
             Will be lowercase, space/dash converted to underscore, truncated
             to 30 characters.
+        _now: Optional datetime for test injection. If None, uses current time.
+            Keyword-only to prevent accidental positional use.
 
     Returns:
         Session ID in format: {sanitized_name}_{YYYYMMDD}_{HHMMSS}.
@@ -79,8 +88,12 @@ def _generate_session_id(name: str) -> str:
     Example:
         >>> _generate_session_id('Add Login Feature')
         'add_login_feature_20251201_143022'
+        >>> from datetime import datetime, UTC
+        >>> _generate_session_id('Test', _now=datetime(2025, 6, 15, 10, 30, 0, tzinfo=UTC))
+        'test_20250615_103000'
     """
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    now = _now or datetime.now(UTC)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
     sanitized = name.lower().replace(" ", "_").replace("-", "_")[:30]
     return f"{sanitized}_{timestamp}"
 
@@ -710,3 +723,50 @@ class FunctionMetrics:
                 "effort_score": round(self.effort_score(), 2),
             },
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FunctionMetrics:
+        """
+        Deserialize function metrics from dictionary.
+
+        Reconstructs a FunctionMetrics instance from stored data. Handles
+        the nested dictionary structure produced by to_dict(), extracting
+        values from ai_contribution, context, and documentation sub-dicts.
+
+        Business context: Loading code metrics from storage enables
+        analysis of AI contribution patterns across sessions.
+
+        Args:
+            data: Dict containing metrics as stored by to_dict(). Expected
+                structure includes function_name, modification_type, and
+                nested dicts for ai_contribution, context, and documentation.
+
+        Returns:
+            FunctionMetrics instance with all fields populated.
+
+        Raises:
+            KeyError: If required fields (function_name, modification_type)
+                are missing.
+
+        Example:
+            >>> data = {'function_name': 'my_func', 'modification_type': 'added',
+            ...         'ai_contribution': {'lines_added': 10, ...}, ...}
+            >>> metrics = FunctionMetrics.from_dict(data)
+            >>> metrics.function_name
+            'my_func'
+        """
+        ai_contrib = data.get("ai_contribution", {})
+        context = data.get("context", {})
+        docs = data.get("documentation", {})
+
+        return cls(
+            function_name=data["function_name"],
+            modification_type=data["modification_type"],
+            lines_added=ai_contrib.get("lines_added", 0),
+            lines_modified=ai_contrib.get("lines_modified", 0),
+            lines_deleted=ai_contrib.get("lines_deleted", 0),
+            complexity=context.get("final_complexity", 1),
+            documentation_score=docs.get("quality_score", 0),
+            has_docstring=docs.get("has_docstring", False),
+            has_type_hints=docs.get("has_type_hints", False),
+        )

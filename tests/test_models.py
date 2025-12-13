@@ -1750,3 +1750,85 @@ class TestFunctionMetrics:
         )
         result = metrics.to_dict()
         assert result["context"]["cognitive_load"] == 5
+
+    def test_from_dict_reconstructs_metrics(self) -> None:
+        """Verifies from_dict() reconstructs FunctionMetrics from to_dict() output.
+
+        Tests round-trip serialization/deserialization for data integrity.
+
+        Business context:
+        Code metrics must survive storage/load cycle for historical
+        analysis and session restoration.
+
+        Arrangement:
+        Create FunctionMetrics and serialize to dict via to_dict().
+
+        Action:
+        Deserialize with from_dict() and compare key fields.
+
+        Assertion Strategy:
+        Validates all fields match original values.
+
+        Testing Principle:
+        Validates serialization round-trip.
+        """
+        original = FunctionMetrics(
+            function_name="test_func",
+            modification_type="added",
+            lines_added=50,
+            lines_modified=10,
+            lines_deleted=5,
+            complexity=8,
+            documentation_score=75,
+            has_docstring=True,
+            has_type_hints=True,
+        )
+        data = original.to_dict()
+        restored = FunctionMetrics.from_dict(data)
+
+        assert restored.function_name == "test_func"
+        assert restored.modification_type == "added"
+        assert restored.lines_added == 50
+        assert restored.lines_modified == 10
+        assert restored.lines_deleted == 5
+        assert restored.complexity == 8
+        assert restored.documentation_score == 75
+        assert restored.has_docstring is True
+        assert restored.has_type_hints is True
+
+    def test_from_dict_handles_minimal_data(self) -> None:
+        """Verifies from_dict() handles minimal dict with defaults.
+
+        Tests that missing optional nested fields get sensible defaults.
+
+        Business context:
+        Legacy data may lack some fields. Defaults ensure backwards
+        compatibility without data loss.
+
+        Arrangement:
+        Create minimal dict with only required fields.
+
+        Action:
+        Call from_dict() with minimal data.
+
+        Assertion Strategy:
+        Validates defaults are applied for missing fields.
+
+        Testing Principle:
+        Validates graceful degradation for incomplete data.
+        """
+        data = {
+            "function_name": "minimal_func",
+            "modification_type": "modified",
+        }
+        metrics = FunctionMetrics.from_dict(data)
+
+        assert metrics.function_name == "minimal_func"
+        assert metrics.modification_type == "modified"
+        assert metrics.lines_added == 0
+        assert metrics.lines_modified == 0
+        assert metrics.lines_deleted == 0
+        assert metrics.complexity == 1
+        assert metrics.documentation_score == 0
+        assert metrics.has_docstring is False
+        assert metrics.has_type_hints is False

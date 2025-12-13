@@ -23,8 +23,12 @@ USAGE:
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, ClassVar
+
+from ai_session_tracker_mcp.__version__ import __version__
 
 
 @dataclass(frozen=True)
@@ -82,7 +86,7 @@ class Config:
     # =========================================================================
     MCP_VERSION: ClassVar[str] = "2024-11-05"
     SERVER_NAME: ClassVar[str] = "ai-session-tracker"
-    SERVER_VERSION: ClassVar[str] = "0.1.0"
+    SERVER_VERSION: ClassVar[str] = __version__
 
     # =========================================================================
     # SESSION TYPE CONSTANTS
@@ -117,6 +121,15 @@ class Config:
             "critical",
         }
     )
+
+    # =========================================================================
+    # ENVIRONMENT VARIABLE NAMES
+    # =========================================================================
+    ENV_S3_BACKUP: ClassVar[str] = "AI_ENABLE_S3_BACKUP"
+    """Environment variable to enable S3 backup functionality."""
+
+    ENV_PROJECT_ID: ClassVar[str] = "AI_PROJECT_ID"
+    """Environment variable to set project identifier for S3 paths."""
 
     # =========================================================================
     # COMPUTED PROPERTIES
@@ -181,6 +194,9 @@ class Config:
     # =========================================================================
     # ENVIRONMENT-BASED SETTINGS (runtime configurable)
     # =========================================================================
+    # NOTE: These ClassVar attributes are intentionally mutable for test injection.
+    # ClassVar fields are class-level, not instance-level, so frozen=True doesn't
+    # apply to them. This enables deterministic testing without environment variables.
     _s3_backup_override: ClassVar[bool | None] = None
     _project_id_override: ClassVar[str | None] = None
 
@@ -213,7 +229,7 @@ class Config:
         """
         if cls._s3_backup_override is not None:
             return cls._s3_backup_override
-        return os.environ.get("AI_ENABLE_S3_BACKUP", "").lower() == "true"
+        return os.environ.get(cls.ENV_S3_BACKUP, "").lower() == "true"
 
     @classmethod
     def get_project_id(cls) -> str:
@@ -244,7 +260,7 @@ class Config:
         """
         if cls._project_id_override is not None:
             return cls._project_id_override
-        return os.environ.get("AI_PROJECT_ID", os.path.basename(os.getcwd()))
+        return os.environ.get(cls.ENV_PROJECT_ID, os.path.basename(os.getcwd()))
 
     @classmethod
     def set_test_overrides(
@@ -308,6 +324,38 @@ class Config:
         """
         cls._s3_backup_override = None
         cls._project_id_override = None
+
+    @classmethod
+    @contextmanager
+    def override_for_test(
+        cls,
+        s3_enabled: bool | None = None,
+        project_id: str | None = None,
+    ) -> Generator[None]:
+        """
+        Context manager for test overrides with automatic cleanup.
+
+        Provides a cleaner alternative to set_test_overrides/reset_test_overrides
+        for test isolation. Automatically resets overrides on context exit,
+        even if an exception occurs.
+
+        Args:
+            s3_enabled: Override for S3 backup enabled flag. None to not override.
+            project_id: Override for project identifier. None to not override.
+
+        Yields:
+            None. Configuration is modified for the duration of the context.
+
+        Example:
+            >>> with Config.override_for_test(s3_enabled=True, project_id='test'):
+            ...     assert Config.is_s3_backup_enabled() is True
+            >>> # Automatically reset after context exit
+        """
+        try:
+            cls.set_test_overrides(s3_enabled, project_id)
+            yield
+        finally:
+            cls.reset_test_overrides()
 
     @classmethod
     def filter_productive_sessions(

@@ -45,12 +45,45 @@ import logging
 import re
 import sys
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from .config import Config
+from .filesystem import FileSystem, RealFileSystem
 from .models import FunctionMetrics, Interaction, Issue, Session
 from .statistics import StatisticsEngine
 from .storage import StorageManager
+
+__all__ = [
+    "SessionTrackerServer",
+    "main",
+]
+
+# Tool name constants
+TOOL_START_SESSION = "start_ai_session"
+TOOL_LOG_INTERACTION = "log_ai_interaction"
+TOOL_END_SESSION = "end_ai_session"
+TOOL_FLAG_ISSUE = "flag_ai_issue"
+TOOL_LOG_CODE_METRICS = "log_code_metrics"
+TOOL_GET_OBSERVABILITY = "get_ai_observability"
+TOOL_GET_ACTIVE_SESSIONS = "get_active_sessions"
+
+# Documentation scoring constants
+DOC_SCORE_HAS_DOCSTRING = 30
+DOC_SCORE_MIN_LENGTH = 10
+DOC_SCORE_HAS_ARGS = 20
+DOC_SCORE_HAS_RETURNS = 20
+DOC_SCORE_HAS_EXAMPLES = 10
+DOC_SCORE_HAS_RAISES = 5
+DOC_SCORE_HAS_TYPE_HINTS = 5
+DOC_SCORE_MAX = 100
+
+# Severity level emoji mapping
+SEVERITY_EMOJI: dict[str, str] = {
+    "low": "🟢",
+    "medium": "🟡",
+    "high": "🟠",
+    "critical": "🔴",
+}
 
 # Configure logging
 logging.basicConfig(
@@ -83,13 +116,17 @@ class SessionTrackerServer:
     - -32700: Parse error
     """
 
-    def __init__(self, storage: StorageManager | None = None) -> None:
+    def __init__(
+        self,
+        storage: StorageManager | None = None,
+        filesystem: FileSystem | None = None,
+    ) -> None:
         """
         Initialize the MCP server with storage and tool registry.
 
         Sets up the session tracker server with storage backend, statistics
         engine, and tool definitions. Can accept a custom storage manager
-        for testing with mock filesystems.
+        and filesystem for testing with mock filesystems.
 
         Business context: The server is the core component that handles
         all MCP tool requests from VS Code. Proper initialization ensures
@@ -99,6 +136,8 @@ class SessionTrackerServer:
             storage: Optional StorageManager instance. If None, creates a
                 new StorageManager with default configuration. Pass a custom
                 instance for testing or custom storage paths.
+            filesystem: Optional FileSystem instance for file I/O. If None,
+                uses RealFileSystem. Pass MockFileSystem for testing.
 
         Raises:
             OSError: If storage initialization fails (directory creation).
@@ -112,17 +151,18 @@ class SessionTrackerServer:
             >>> server = SessionTrackerServer(storage=mock_storage)
         """
         self.storage = storage or StorageManager()
+        self.filesystem = filesystem or RealFileSystem()
         self.stats_engine = StatisticsEngine()
 
-        # Tool name -> executor method mapping
+        # Tool name -> executor method mapping (using constants)
         self._tool_handlers = {
-            "start_ai_session": self._handle_start_session,
-            "log_ai_interaction": self._handle_log_interaction,
-            "end_ai_session": self._handle_end_session,
-            "flag_ai_issue": self._handle_flag_issue,
-            "log_code_metrics": self._handle_log_code_metrics,
-            "get_ai_observability": self._handle_get_observability,
-            "get_active_sessions": self._handle_get_active_sessions,
+            TOOL_START_SESSION: self._handle_start_session,
+            TOOL_LOG_INTERACTION: self._handle_log_interaction,
+            TOOL_END_SESSION: self._handle_end_session,
+            TOOL_FLAG_ISSUE: self._handle_flag_issue,
+            TOOL_LOG_CODE_METRICS: self._handle_log_code_metrics,
+            TOOL_GET_OBSERVABILITY: self._handle_get_observability,
+            TOOL_GET_ACTIVE_SESSIONS: self._handle_get_active_sessions,
         }
 
         # Tool definitions for tools/list response
@@ -156,8 +196,8 @@ class SessionTrackerServer:
             ['session_name', 'task_type', 'model_name', ...]
         """
         return {
-            "start_ai_session": {
-                "name": "start_ai_session",
+            TOOL_START_SESSION: {
+                "name": TOOL_START_SESSION,
                 "description": (
                     "Start a new AI coding session for tracking workflow metrics. "
                     "CALL THIS FIRST at the start of every coding task. "
@@ -203,8 +243,8 @@ class SessionTrackerServer:
                     ],
                 },
             },
-            "log_ai_interaction": {
-                "name": "log_ai_interaction",
+            TOOL_LOG_INTERACTION: {
+                "name": TOOL_LOG_INTERACTION,
                 "description": (
                     "Log an AI prompt/response interaction within an active session. "
                     "Call after significant AI exchanges to track effectiveness."
@@ -250,8 +290,8 @@ class SessionTrackerServer:
                     ],
                 },
             },
-            "end_ai_session": {
-                "name": "end_ai_session",
+            TOOL_END_SESSION: {
+                "name": TOOL_END_SESSION,
                 "description": (
                     "End an AI session and calculate final metrics. "
                     "Call when coding task is complete."
@@ -277,8 +317,8 @@ class SessionTrackerServer:
                     "required": ["session_id", "outcome"],
                 },
             },
-            "flag_ai_issue": {
-                "name": "flag_ai_issue",
+            TOOL_FLAG_ISSUE: {
+                "name": TOOL_FLAG_ISSUE,
                 "description": (
                     "Flag a problematic AI interaction for analysis. "
                     "Use when AI produces incorrect output or approach needs changing."
@@ -309,8 +349,8 @@ class SessionTrackerServer:
                     "required": ["session_id", "issue_type", "description", "severity"],
                 },
             },
-            "log_code_metrics": {
-                "name": "log_code_metrics",
+            TOOL_LOG_CODE_METRICS: {
+                "name": TOOL_LOG_CODE_METRICS,
                 "description": (
                     "Calculate and log code quality metrics for modified functions. "
                     "Uses AST analysis for complexity and documentation scoring. "
@@ -352,8 +392,8 @@ class SessionTrackerServer:
                     "required": ["session_id", "file_path", "functions_modified"],
                 },
             },
-            "get_ai_observability": {
-                "name": "get_ai_observability",
+            TOOL_GET_OBSERVABILITY: {
+                "name": TOOL_GET_OBSERVABILITY,
                 "description": (
                     "Retrieve AI session analytics and ROI metrics. "
                     "Returns summary statistics, effectiveness trends, and cost analysis."
@@ -375,8 +415,8 @@ class SessionTrackerServer:
                     "required": [],
                 },
             },
-            "get_active_sessions": {
-                "name": "get_active_sessions",
+            TOOL_GET_ACTIVE_SESSIONS: {
+                "name": TOOL_GET_ACTIVE_SESSIONS,
                 "description": (
                     "Get list of currently active (not ended) sessions. "
                     "Use this to find sessions to end when session_id is lost."
@@ -500,10 +540,10 @@ Estimate: {session.human_time_estimate_minutes:.0f}min ({session.estimate_source
         """
         try:
             session_id = args["session_id"]
-            session_data = self.storage.get_session(session_id)
-
-            if not session_data:
-                return self._error_response(msg_id, -32602, f"Session not found: {session_id}")
+            session_data, error = self._require_session(session_id, msg_id)
+            if error:
+                return error
+            session_data = cast(dict[str, Any], session_data)  # Narrowed by error check
 
             interaction = Interaction.create(
                 session_id=session_id,
@@ -580,10 +620,10 @@ Session: {total} interactions, avg {avg_eff:.1f}/5
         """
         try:
             session_id = args["session_id"]
-            session_data = self.storage.get_session(session_id)
-
-            if not session_data:
-                return self._error_response(msg_id, -32602, f"Session not found: {session_id}")
+            session_data, error = self._require_session(session_id, msg_id)
+            if error:
+                return error
+            session_data = cast(dict[str, Any], session_data)  # Narrowed by error check
 
             # Update session
             session_data["status"] = "completed"
@@ -654,10 +694,10 @@ Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
         """
         try:
             session_id = args["session_id"]
-            session_data = self.storage.get_session(session_id)
-
-            if not session_data:
-                return self._error_response(msg_id, -32602, f"Session not found: {session_id}")
+            session_data, error = self._require_session(session_id, msg_id)
+            if error:
+                return error
+            del session_data  # Not used; silence unused variable warning
 
             issue = Issue.create(
                 session_id=session_id,
@@ -673,8 +713,7 @@ Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
                 f"{args['issue_type']} ({args['severity']})"
             )
 
-            severity_emoji = {"low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}
-            emoji = severity_emoji.get(args["severity"], "⚪")
+            emoji = SEVERITY_EMOJI.get(args["severity"], "⚪")
 
             response_text = f"""
 {emoji} Issue Flagged: {args['issue_type']} ({args['severity'].upper()})
@@ -688,6 +727,186 @@ Session: {session_id}
         except Exception as e:
             logger.error(f"Error flagging issue: {e}")
             return self._error_response(msg_id, -32603, f"Failed to flag issue: {e}")
+
+    # =========================================================================
+    # CODE METRICS HELPERS (P1-1 refactoring)
+    # =========================================================================
+
+    def _read_and_parse_python_file(
+        self, file_path: str
+    ) -> tuple[ast.Module, None] | tuple[None, str]:
+        """
+        Read and parse a Python file into an AST.
+
+        Args:
+            file_path: Path to the Python file.
+
+        Returns:
+            Tuple of (AST, None) on success, or (None, error_message) on failure.
+        """
+        try:
+            code = self.filesystem.read_text(file_path)
+            tree = ast.parse(code)
+            return tree, None
+        except FileNotFoundError:
+            return None, f"File not found: {file_path}"
+        except SyntaxError as e:
+            return None, f"Syntax error in file: {e}"
+
+    def _find_function_in_ast(
+        self, tree: ast.Module, func_name: str
+    ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+        """
+        Find a function or async function definition by name in the AST.
+
+        Args:
+            tree: Parsed AST module.
+            func_name: Name of the function to find.
+
+        Returns:
+            Function node if found, None otherwise.
+        """
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == func_name:
+                return node
+        return None
+
+    def _calculate_cyclomatic_complexity(
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> int:
+        """
+        Calculate cyclomatic complexity for a function AST node.
+
+        Complexity starts at 1 and increases for each branch/decision point:
+        - if, while, for, except, with, assert statements
+        - Boolean operators (and, or) add len(values) - 1
+
+        Args:
+            func_node: AST node for the function.
+
+        Returns:
+            Cyclomatic complexity score (minimum 1).
+        """
+        complexity = 1
+        complexity_nodes = (
+            ast.If,
+            ast.While,
+            ast.For,
+            ast.ExceptHandler,
+            ast.With,
+            ast.Assert,
+        )
+        for child in ast.walk(func_node):
+            if isinstance(child, complexity_nodes):
+                complexity += 1
+            elif isinstance(child, ast.BoolOp):
+                complexity += len(child.values) - 1
+        return complexity
+
+    def _calculate_documentation_score(
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> tuple[int, bool, bool]:
+        """
+        Calculate documentation quality score for a function.
+
+        Scoring uses module-level constants:
+        - DOC_SCORE_HAS_DOCSTRING (30): Has any docstring
+        - DOC_SCORE_MIN_LENGTH (10): Docstring > 50 chars
+        - DOC_SCORE_HAS_ARGS (20): Contains Args/Parameters section
+        - DOC_SCORE_HAS_RETURNS (20): Contains Returns section
+        - DOC_SCORE_HAS_EXAMPLES (10): Contains Examples/Usage section
+        - DOC_SCORE_HAS_RAISES (5): Contains Raises section
+        - DOC_SCORE_HAS_TYPE_HINTS (5): Has type annotations
+
+        Args:
+            func_node: AST node for the function.
+
+        Returns:
+            Tuple of (score 0-100, has_docstring, has_type_hints).
+        """
+        docstring = ast.get_docstring(func_node)
+        doc_score = 0
+        has_docstring = docstring is not None
+
+        if docstring:
+            doc_score += DOC_SCORE_HAS_DOCSTRING
+            if len(docstring) > 50:
+                doc_score += DOC_SCORE_MIN_LENGTH
+            if re.search(r"(Args?|Parameters?):", docstring, re.IGNORECASE):
+                doc_score += DOC_SCORE_HAS_ARGS
+            if re.search(r"Returns?:", docstring, re.IGNORECASE):
+                doc_score += DOC_SCORE_HAS_RETURNS
+            if re.search(r"(Examples?|Usage):", docstring, re.IGNORECASE):
+                doc_score += DOC_SCORE_HAS_EXAMPLES
+            if re.search(r"Raises?:", docstring, re.IGNORECASE):
+                doc_score += DOC_SCORE_HAS_RAISES
+
+        has_type_hints = bool(
+            func_node.returns or any(arg.annotation for arg in func_node.args.args)
+        )
+        if has_type_hints:
+            doc_score += DOC_SCORE_HAS_TYPE_HINTS
+
+        return min(doc_score, DOC_SCORE_MAX), has_docstring, has_type_hints
+
+    def _analyze_function(
+        self,
+        tree: ast.Module,
+        func_info: dict[str, Any],
+    ) -> FunctionMetrics | None:
+        """
+        Analyze a single function and return its metrics.
+
+        Args:
+            tree: Parsed AST module.
+            func_info: Dict with 'name', 'modification_type', and optional line counts.
+
+        Returns:
+            FunctionMetrics if function found, None otherwise.
+        """
+        func_name = func_info["name"]
+        func_node = self._find_function_in_ast(tree, func_name)
+
+        if not func_node:
+            logger.debug(f"Function '{func_name}' not found in AST, skipping")
+            return None
+
+        complexity = self._calculate_cyclomatic_complexity(func_node)
+        doc_score, has_docstring, has_type_hints = self._calculate_documentation_score(func_node)
+
+        return FunctionMetrics(
+            function_name=func_name,
+            modification_type=func_info["modification_type"],
+            lines_added=func_info.get("lines_added", 0),
+            lines_modified=func_info.get("lines_modified", 0),
+            lines_deleted=func_info.get("lines_deleted", 0),
+            complexity=complexity,
+            documentation_score=doc_score,
+            has_docstring=has_docstring,
+            has_type_hints=has_type_hints,
+        )
+
+    def _calculate_metrics_summary(
+        self, function_metrics: list[dict[str, Any]]
+    ) -> tuple[float, float, float]:
+        """
+        Calculate summary statistics from function metrics.
+
+        Args:
+            function_metrics: List of function metric dicts.
+
+        Returns:
+            Tuple of (avg_complexity, avg_doc_score, total_effort).
+        """
+        if not function_metrics:
+            return 0.0, 0.0, 0.0
+
+        complexity_sum = sum(m["context"]["final_complexity"] for m in function_metrics)
+        doc_sum = sum(m["documentation"]["quality_score"] for m in function_metrics)
+        total_effort = sum(m["value_metrics"]["effort_score"] for m in function_metrics)
+
+        count = len(function_metrics)
+        return complexity_sum / count, doc_sum / count, total_effort
 
     async def _handle_log_code_metrics(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
         """
@@ -734,9 +953,10 @@ Session: {session_id}
             file_path = args["file_path"]
             functions_modified = args["functions_modified"]
 
-            session_data = self.storage.get_session(session_id)
-            if not session_data:
-                return self._error_response(msg_id, -32602, f"Session not found: {session_id}")
+            session_data, error = self._require_session(session_id, msg_id)
+            if error:
+                return error
+            session_data = cast(dict[str, Any], session_data)  # Narrowed by error check
 
             # Validate file type
             if not file_path.endswith(".py"):
@@ -746,90 +966,18 @@ Session: {session_id}
                     f"Unsupported file type: {file_path}. Only Python (.py) files supported.",
                 )
 
-            # Read and parse file
-            try:
-                with open(file_path, encoding="utf-8") as f:
-                    code = f.read()
-                tree = ast.parse(code)
-            except FileNotFoundError:
-                return self._error_response(msg_id, -32602, f"File not found: {file_path}")
-            except SyntaxError as e:
-                return self._error_response(msg_id, -32602, f"Syntax error in file: {e}")
+            # Read and parse file using helper
+            tree, parse_error = self._read_and_parse_python_file(file_path)
+            if parse_error:
+                return self._error_response(msg_id, -32602, parse_error)
+            tree = cast(ast.Module, tree)  # Narrowed by parse_error check
 
-            # Analyze each function
+            # Analyze each function using helper
             function_metrics: list[dict[str, Any]] = []
-
             for func_info in functions_modified:
-                func_name = func_info["name"]
-                mod_type = func_info["modification_type"]
-
-                # Find function in AST
-                func_node = None
-                for node in ast.walk(tree):
-                    if (
-                        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-                        and node.name == func_name
-                    ):
-                        func_node = node
-                        break
-
-                if not func_node:
-                    logger.debug(f"Function '{func_name}' not found in AST, skipping")
-                    continue
-
-                # Calculate cyclomatic complexity
-                complexity = 1
-                complexity_nodes = (
-                    ast.If,
-                    ast.While,
-                    ast.For,
-                    ast.ExceptHandler,
-                    ast.With,
-                    ast.Assert,
-                )
-                for child in ast.walk(func_node):
-                    if isinstance(child, complexity_nodes):
-                        complexity += 1
-                    elif isinstance(child, ast.BoolOp):
-                        complexity += len(child.values) - 1
-
-                # Calculate documentation score
-                docstring = ast.get_docstring(func_node)
-                doc_score = 0
-                has_docstring = docstring is not None
-
-                if docstring:
-                    doc_score += 30  # Has docstring
-                    if len(docstring) > 50:
-                        doc_score += 10
-                    if re.search(r"(Args?|Parameters?):", docstring, re.IGNORECASE):
-                        doc_score += 20
-                    if re.search(r"Returns?:", docstring, re.IGNORECASE):
-                        doc_score += 20
-                    if re.search(r"(Examples?|Usage):", docstring, re.IGNORECASE):
-                        doc_score += 10
-                    if re.search(r"Raises?:", docstring, re.IGNORECASE):
-                        doc_score += 5
-
-                # Check type hints
-                has_type_hints = bool(
-                    func_node.returns or any(arg.annotation for arg in func_node.args.args)
-                )
-                if has_type_hints:
-                    doc_score += 5
-
-                metrics = FunctionMetrics(
-                    function_name=func_name,
-                    modification_type=mod_type,
-                    lines_added=func_info.get("lines_added", 0),
-                    lines_modified=func_info.get("lines_modified", 0),
-                    lines_deleted=func_info.get("lines_deleted", 0),
-                    complexity=complexity,
-                    documentation_score=min(doc_score, 100),
-                    has_docstring=has_docstring,
-                    has_type_hints=has_type_hints,
-                )
-                function_metrics.append(metrics.to_dict())
+                metrics = self._analyze_function(tree, func_info)
+                if metrics:
+                    function_metrics.append(metrics.to_dict())
 
             # Store metrics with session
             metrics_data = {
@@ -843,15 +991,10 @@ Session: {session_id}
             session_data["code_metrics"].append(metrics_data)
             self.storage.update_session(session_id, session_data)
 
-            # Calculate summary
-            if function_metrics:
-                complexity_sum = sum(m["context"]["final_complexity"] for m in function_metrics)
-                doc_sum = sum(m["documentation"]["quality_score"] for m in function_metrics)
-                total_effort = sum(m["value_metrics"]["effort_score"] for m in function_metrics)
-                avg_complexity = complexity_sum / len(function_metrics)
-                avg_doc = doc_sum / len(function_metrics)
-            else:
-                avg_complexity = avg_doc = total_effort = 0
+            # Calculate summary using helper
+            avg_complexity, avg_doc, total_effort = self._calculate_metrics_summary(
+                function_metrics
+            )
 
             logger.info(f"Logged code metrics for {len(function_metrics)} functions in {file_path}")
 
@@ -1103,6 +1246,35 @@ Session: {session_id}
             "id": msg_id,
             "error": {"code": code, "message": message},
         }
+
+    def _require_session(
+        self, session_id: str, msg_id: Any
+    ) -> tuple[dict[str, Any], None] | tuple[None, dict[str, Any]]:
+        """
+        Validate session exists and return data or error response.
+
+        Consolidates the repeated pattern of fetching a session and
+        returning an error response if not found. Reduces duplication
+        across tool handlers that require an active session.
+
+        Args:
+            session_id: Session identifier to look up.
+            msg_id: JSON-RPC message ID for error response.
+
+        Returns:
+            Tuple of (session_data, None) if found, or
+            (None, error_response) if not found.
+
+        Example:
+            >>> session_data, error = server._require_session("abc123", msg_id=1)
+            >>> if error:
+            ...     return error
+            >>> # Use session_data...
+        """
+        session_data = self.storage.get_session(session_id)
+        if not session_data:
+            return None, self._error_response(msg_id, -32602, f"Session not found: {session_id}")
+        return session_data, None
 
     # =========================================================================
     # MESSAGE HANDLING

@@ -29,6 +29,21 @@ from typing import Any
 
 from .config import Config
 
+__all__ = ["StatisticsEngine"]
+
+# Gap classification thresholds (minutes)
+GAP_THRESHOLD_QUICK = 5
+GAP_THRESHOLD_NORMAL = 30
+GAP_THRESHOLD_EXTENDED = 120
+
+# Friction detection thresholds
+FRICTION_LONG_BREAK_RATIO = 0.3
+FRICTION_AVG_GAP_MINUTES = 60
+FRICTION_TREND_MULTIPLIER = 1.5
+
+# Default oversight ratio (portion of AI time requiring human review)
+DEFAULT_OVERSIGHT_RATIO = 0.2
+
 
 class StatisticsEngine:
     """
@@ -49,6 +64,7 @@ class StatisticsEngine:
         self,
         human_hourly_rate: float | None = None,
         ai_monthly_cost: float | None = None,
+        oversight_ratio: float | None = None,
     ) -> None:
         """
         Initialize statistics engine with configurable cost parameters.
@@ -68,6 +84,9 @@ class StatisticsEngine:
             ai_monthly_cost: Monthly AI subscription cost in USD.
                 Typically includes Copilot ($20) + ChatGPT/Claude ($20).
                 Default: Config.AI_MONTHLY_COST ($40.00)
+            oversight_ratio: Fraction of AI time requiring human oversight.
+                Used in ROI calculations for realistic cost comparison.
+                Default: DEFAULT_OVERSIGHT_RATIO (0.2 = 20%)
 
         Raises:
             TypeError: If rate parameters are not numeric when provided.
@@ -85,6 +104,9 @@ class StatisticsEngine:
         self.human_hourly_rate = human_hourly_rate or Config.HUMAN_HOURLY_RATE
         self.ai_monthly_cost = ai_monthly_cost or Config.AI_MONTHLY_COST
         self.ai_hourly_rate = self.ai_monthly_cost / Config.WORKING_HOURS_PER_MONTH
+        self.oversight_ratio = (
+            oversight_ratio if oversight_ratio is not None else DEFAULT_OVERSIGHT_RATIO
+        )
 
     def calculate_session_duration_minutes(self, session: dict[str, Any]) -> float:
         """
@@ -435,15 +457,8 @@ class StatisticsEngine:
             if gap_minutes < 0:
                 continue
 
-            # Classify gap
-            if gap_minutes < 5:
-                classification = "quick"
-            elif gap_minutes < 30:
-                classification = "normal"
-            elif gap_minutes < 120:
-                classification = "extended"
-            else:
-                classification = "long_break"
+            # Classify gap using module constants
+            classification = self._classify_gap(gap_minutes)
 
             classification_counts[classification] += 1
 
@@ -462,31 +477,10 @@ class StatisticsEngine:
         total_gaps = len(gaps)
         avg_gap = sum(g["duration_minutes"] for g in gaps) / total_gaps if total_gaps else 0
 
-        # Detect friction indicators
-        friction_indicators: list[str] = []
-
-        if total_gaps > 0:
-            long_break_ratio = classification_counts["long_break"] / total_gaps
-            if long_break_ratio > 0.3:
-                friction_indicators.append(
-                    f"High long-break ratio ({long_break_ratio:.0%}) - potential tool friction"
-                )
-
-            if avg_gap > 60:
-                friction_indicators.append(
-                    f"High average gap ({avg_gap:.0f}min) - users may be avoiding tool"
-                )
-
-            # Check for increasing gaps over time (trend)
-            if len(gaps) >= 3:
-                first_half = gaps[: len(gaps) // 2]
-                second_half = gaps[len(gaps) // 2 :]
-                first_avg = sum(g["duration_minutes"] for g in first_half) / len(first_half)
-                second_avg = sum(g["duration_minutes"] for g in second_half) / len(second_half)
-                if second_avg > first_avg * 1.5:
-                    friction_indicators.append(
-                        "Gaps increasing over time - possible adoption decline"
-                    )
+        # Detect friction indicators using helper
+        friction_indicators = self._detect_friction_indicators(
+            gaps, classification_counts, total_gaps, avg_gap
+        )
 
         return {
             "gaps": gaps,
@@ -497,6 +491,82 @@ class StatisticsEngine:
             },
             "friction_indicators": friction_indicators,
         }
+
+    def _classify_gap(self, gap_minutes: float) -> str:
+        """
+        Classify a gap duration into a category.
+
+        Uses module-level threshold constants for classification:
+        - quick: < GAP_THRESHOLD_QUICK (5 min)
+        - normal: < GAP_THRESHOLD_NORMAL (30 min)
+        - extended: < GAP_THRESHOLD_EXTENDED (120 min)
+        - long_break: >= GAP_THRESHOLD_EXTENDED
+
+        Args:
+            gap_minutes: Gap duration in minutes.
+
+        Returns:
+            Classification string: 'quick', 'normal', 'extended', or 'long_break'.
+        """
+        if gap_minutes < GAP_THRESHOLD_QUICK:
+            return "quick"
+        elif gap_minutes < GAP_THRESHOLD_NORMAL:
+            return "normal"
+        elif gap_minutes < GAP_THRESHOLD_EXTENDED:
+            return "extended"
+        else:
+            return "long_break"
+
+    def _detect_friction_indicators(
+        self,
+        gaps: list[dict[str, Any]],
+        classification_counts: dict[str, int],
+        total_gaps: int,
+        avg_gap: float,
+    ) -> list[str]:
+        """
+        Detect friction patterns from gap analysis.
+
+        Analyzes gap statistics to identify potential workflow friction:
+        - High long-break ratio (> FRICTION_LONG_BREAK_RATIO)
+        - High average gap (> FRICTION_AVG_GAP_MINUTES)
+        - Increasing gap trend (second half > first half * FRICTION_TREND_MULTIPLIER)
+
+        Args:
+            gaps: List of gap records with duration_minutes.
+            classification_counts: Count of gaps by classification.
+            total_gaps: Total number of gaps analyzed.
+            avg_gap: Average gap duration in minutes.
+
+        Returns:
+            List of friction indicator messages, empty if no issues detected.
+        """
+        friction_indicators: list[str] = []
+
+        if total_gaps == 0:
+            return friction_indicators
+
+        long_break_ratio = classification_counts["long_break"] / total_gaps
+        if long_break_ratio > FRICTION_LONG_BREAK_RATIO:
+            friction_indicators.append(
+                f"High long-break ratio ({long_break_ratio:.0%}) - potential tool friction"
+            )
+
+        if avg_gap > FRICTION_AVG_GAP_MINUTES:
+            friction_indicators.append(
+                f"High average gap ({avg_gap:.0f}min) - users may be avoiding tool"
+            )
+
+        # Check for increasing gaps over time (trend)
+        if len(gaps) >= 3:
+            first_half = gaps[: len(gaps) // 2]
+            second_half = gaps[len(gaps) // 2 :]
+            first_avg = sum(g["duration_minutes"] for g in first_half) / len(first_half)
+            second_avg = sum(g["duration_minutes"] for g in second_half) / len(second_half)
+            if second_avg > first_avg * FRICTION_TREND_MULTIPLIER:
+                friction_indicators.append("Gaps increasing over time - possible adoption decline")
+
+        return friction_indicators
 
     def calculate_roi_metrics(
         self,
@@ -573,8 +643,8 @@ class StatisticsEngine:
         # Calculate costs
         human_cost = estimated_human_hours * self.human_hourly_rate
         ai_subscription_cost = total_ai_hours * self.ai_hourly_rate
-        # AI cost also includes human oversight (assume 20% of AI time)
-        oversight_hours = total_ai_hours * 0.2
+        # AI cost also includes human oversight
+        oversight_hours = total_ai_hours * self.oversight_ratio
         oversight_cost = oversight_hours * self.human_hourly_rate
         total_ai_cost = ai_subscription_cost + oversight_cost
 

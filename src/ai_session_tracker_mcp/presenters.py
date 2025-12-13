@@ -26,6 +26,48 @@ if TYPE_CHECKING:
     from .statistics import StatisticsEngine
     from .storage import StorageManager
 
+__all__ = [
+    "SessionViewModel",
+    "ROIViewModel",
+    "EffectivenessViewModel",
+    "IssueViewModel",
+    "SessionGapViewModel",
+    "SessionGapsViewModel",
+    "DashboardOverview",
+    "DashboardPresenter",
+    "ChartPresenter",
+]
+
+# Chart color palette for consistent styling
+STATUS_COLORS: dict[str, str] = {
+    "completed": "#22c55e",
+    "active": "#3b82f6",
+    "default": "#94a3b8",
+}
+
+EFFECTIVENESS_COLORS: dict[int, str] = {
+    5: "#22c55e",
+    4: "#84cc16",
+    3: "#eab308",
+    2: "#f97316",
+    1: "#ef4444",
+}
+
+
+def _format_duration(minutes: float) -> str:
+    """
+    Format duration as human-readable string.
+
+    Args:
+        minutes: Duration in minutes.
+
+    Returns:
+        String like "45m" or "1.5h".
+    """
+    if minutes < 60:
+        return f"{minutes:.0f}m"
+    return f"{minutes / 60:.1f}h"
+
 
 @dataclass
 class SessionViewModel:
@@ -66,10 +108,7 @@ class SessionViewModel:
             >>> session.duration_display
             '1.5h'
         """
-        if self.duration_minutes < 60:
-            return f"{self.duration_minutes:.0f}m"
-        hours = self.duration_minutes / 60
-        return f"{hours:.1f}h"
+        return _format_duration(self.duration_minutes)
 
     @property
     def effectiveness_stars(self) -> str:
@@ -425,10 +464,7 @@ class SessionGapViewModel:
         Returns:
             String like "5m", "45m", "2.5h".
         """
-        if self.duration_minutes < 60:
-            return f"{self.duration_minutes:.0f}m"
-        hours = self.duration_minutes / 60
-        return f"{hours:.1f}h"
+        return _format_duration(self.duration_minutes)
 
     @property
     def classification_emoji(self) -> str:
@@ -474,10 +510,7 @@ class SessionGapsViewModel:
         Returns:
             String like "15m" or "1.5h".
         """
-        if self.average_gap_minutes < 60:
-            return f"{self.average_gap_minutes:.0f}m"
-        hours = self.average_gap_minutes / 60
-        return f"{hours:.1f}h"
+        return _format_duration(self.average_gap_minutes)
 
     @property
     def has_friction(self) -> bool:
@@ -708,6 +741,45 @@ class DashboardPresenter:
         sessions_data = self.storage.load_sessions()
         return self._build_session_gaps(sessions_data)
 
+    def _group_interactions_by_session(
+        self,
+        interactions: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        Group interactions by their session_id.
+
+        Args:
+            interactions: List of interaction records.
+
+        Returns:
+            Dict mapping session_id to list of interactions.
+        """
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for interaction in interactions:
+            sid = interaction.get("session_id", "")
+            if sid not in grouped:
+                grouped[sid] = []
+            grouped[sid].append(interaction)
+        return grouped
+
+    def _calculate_session_effectiveness(
+        self,
+        session_interactions: list[dict[str, Any]],
+    ) -> float:
+        """
+        Calculate average effectiveness for a session's interactions.
+
+        Args:
+            session_interactions: List of interactions for one session.
+
+        Returns:
+            Average effectiveness rating, or 0.0 if no interactions.
+        """
+        if not session_interactions:
+            return 0.0
+        total: float = sum(float(i.get("effectiveness_rating", 0)) for i in session_interactions)
+        return total / len(session_interactions)
+
     def _build_session_list(
         self,
         sessions: dict[str, Any],
@@ -742,26 +814,11 @@ class DashboardPresenter:
             >>> interactions = storage.load_interactions()
             >>> models = presenter._build_session_list(sessions, interactions)
         """
-        # Group interactions by session
-        interactions_by_session: dict[str, list[dict[str, Any]]] = {}
-        for interaction in interactions:
-            sid = interaction.get("session_id", "")
-            if sid not in interactions_by_session:
-                interactions_by_session[sid] = []
-            interactions_by_session[sid].append(interaction)
+        interactions_by_session = self._group_interactions_by_session(interactions)
 
         result: list[SessionViewModel] = []
         for session_id, session in sessions.items():
             session_interactions = interactions_by_session.get(session_id, [])
-
-            # Calculate average effectiveness for this session
-            if session_interactions:
-                avg_eff = sum(i.get("effectiveness_rating", 0) for i in session_interactions) / len(
-                    session_interactions
-                )
-            else:
-                avg_eff = 0.0
-
             result.append(
                 SessionViewModel(
                     session_id=session_id,
@@ -769,7 +826,7 @@ class DashboardPresenter:
                     status=session.get("status", "unknown"),
                     duration_minutes=self.statistics.calculate_session_duration_minutes(session),
                     interaction_count=len(session_interactions),
-                    effectiveness_avg=avg_eff,
+                    effectiveness_avg=self._calculate_session_effectiveness(session_interactions),
                     start_time=session.get("start_time", ""),
                     end_time=session.get("end_time"),
                 )
@@ -1030,7 +1087,7 @@ class ChartPresenter:
         ratings = [5, 4, 3, 2, 1]
         counts = [dist.get(r, 0) for r in ratings]
         labels = ["★★★★★", "★★★★☆", "★★★☆☆", "★★☆☆☆", "★☆☆☆☆"]
-        colors = ["#22c55e", "#84cc16", "#eab308", "#f97316", "#ef4444"]
+        colors = [EFFECTIVENESS_COLORS[r] for r in ratings]
 
         ax.barh(labels, counts, color=colors)
         ax.set_xlabel("Count")
@@ -1129,6 +1186,60 @@ class ChartPresenter:
         buf.seek(0)
         return buf.read()
 
+    def _parse_session_for_timeline(
+        self,
+        session: dict[str, Any],
+    ) -> tuple[Any, float, str] | None:
+        """
+        Extract timeline data from a session.
+
+        Args:
+            session: Raw session data dict.
+
+        Returns:
+            Tuple of (datetime, duration_minutes, status) or None if invalid.
+        """
+        from datetime import datetime
+
+        start_time = session.get("start_time")
+        if not start_time:
+            return None
+        try:
+            start_str = start_time.replace("Z", "+00:00")
+            start = datetime.fromisoformat(start_str)
+            duration = self.statistics.calculate_session_duration_minutes(session)
+            return (start, duration, session.get("status", "unknown"))
+        except (ValueError, TypeError):
+            return None
+
+    def _status_to_color(self, status: str) -> str:
+        """
+        Map session status to chart color.
+
+        Args:
+            status: Session status string.
+
+        Returns:
+            Hex color code from STATUS_COLORS.
+        """
+        return STATUS_COLORS.get(status, STATUS_COLORS["default"])
+
+    def _render_empty_timeline(self) -> Any:
+        """
+        Render placeholder chart when no sessions exist.
+
+        Returns:
+            Matplotlib figure and axes.
+        """
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.text(0.5, 0.5, "No sessions yet", ha="center", va="center", fontsize=14)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        return fig, ax
+
     def render_sessions_timeline(self) -> bytes:
         """
         Render sessions as a timeline bar chart PNG.
@@ -1162,42 +1273,26 @@ class ChartPresenter:
         import matplotlib
 
         matplotlib.use("Agg")
-        from datetime import datetime
-
         import matplotlib.pyplot as plt
 
         sessions = self.storage.load_sessions()
 
-        # Extract session data
-        session_list = []
-        for _sid, session in sessions.items():
-            if session.get("start_time"):
-                try:
-                    start_str = session["start_time"].replace("Z", "+00:00")
-                    start = datetime.fromisoformat(start_str)
-                    duration = self.statistics.calculate_session_duration_minutes(session)
-                    session_list.append((start, duration, session.get("status", "unknown")))
-                except (ValueError, TypeError):
-                    continue
+        # Extract valid session data using helper
+        session_list = [
+            parsed
+            for session in sessions.values()
+            if (parsed := self._parse_session_for_timeline(session)) is not None
+        ]
 
         if not session_list:
-            # Empty chart
-            fig, ax = plt.subplots(figsize=(8, 3))
-            ax.text(0.5, 0.5, "No sessions yet", ha="center", va="center", fontsize=14)
-            ax.set_xlim(0, 1)
-            ax.set_ylim(0, 1)
-            ax.axis("off")
+            fig, _ax = self._render_empty_timeline()
         else:
             session_list.sort(key=lambda x: x[0])
-
             fig, ax = plt.subplots(figsize=(8, 3))
 
             dates = [s[0] for s in session_list]
             durations = [s[1] for s in session_list]
-            colors = [
-                "#22c55e" if s[2] == "completed" else "#3b82f6" if s[2] == "active" else "#94a3b8"
-                for s in session_list
-            ]
+            colors = [self._status_to_color(s[2]) for s in session_list]
 
             ax.bar(range(len(dates)), durations, color=colors)
             ax.set_ylabel("Duration (min)")
