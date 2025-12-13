@@ -3,42 +3,17 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
-from ai_session_tracker_mcp.filesystem import MockFileSystem
+# Add tests directory to path for conftest imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from ai_session_tracker_mcp.storage import StorageManager
-
-
-@pytest.fixture
-def mock_fs() -> MockFileSystem:
-    """Create a MockFileSystem for testing storage operations.
-
-    Provides an in-memory filesystem that mimics real filesystem behavior
-    without touching disk. Essential for isolated, fast, deterministic tests.
-
-    Business context:
-    Storage tests must be isolated from the real filesystem to prevent
-    data corruption and ensure consistent test results across environments.
-
-    Args:
-        No arguments required for this fixture.
-
-    Raises:
-        No exceptions raised by this fixture.
-
-    Returns:
-        MockFileSystem: Fresh in-memory filesystem instance with empty
-        state, ready for test-specific file and directory operations.
-
-    Example:
-        >>> fs = mock_fs()
-        >>> fs.makedirs('/test/dir')
-        >>> fs.is_dir('/test/dir')
-        True
-    """
-    return MockFileSystem()
+from conftest import MockFileSystem
 
 
 @pytest.fixture
@@ -1094,3 +1069,66 @@ class TestErrorHandling:
         mock_fs.chmod(storage.sessions_file, 0o444)
         result = storage.save_sessions({"new": "data"})
         assert result is False
+
+
+class TestReadJsonErrorHandling:
+    """Tests for _read_json error handling paths."""
+
+    def test_read_json_handles_os_error(self, mock_fs: MockFileSystem) -> None:
+        """Verifies _read_json returns default on OSError.
+
+        Tests that non-FileNotFoundError OSErrors (like permission denied)
+        are caught and handled gracefully.
+
+        Business context:
+        Production may have intermittent I/O errors. Storage must
+        continue operating with defaults rather than crashing.
+        """
+        from unittest.mock import patch
+
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+
+        # Patch read_text to raise OSError
+        with patch.object(mock_fs, "read_text", side_effect=OSError("Disk error")):
+            result = storage.load_sessions()
+            assert result == {}
+
+    def test_read_json_handles_invalid_json(self, mock_fs: MockFileSystem) -> None:
+        """Verifies _read_json returns default on JSONDecodeError.
+
+        Tests that corrupted JSON files are handled gracefully by
+        returning the default value.
+
+        Business context:
+        File corruption can occur. Storage must not crash on bad data.
+        """
+        storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+
+        # Write invalid JSON to sessions file
+        mock_fs.write_text(storage.sessions_file, "{ invalid json }")
+
+        result = storage.load_sessions()
+        assert result == {}
+
+
+class TestEnsureFilesExistErrorHandling:
+    """Tests for _ensure_files_exist error handling."""
+
+    def test_handles_os_error_during_init(self, mock_fs: MockFileSystem) -> None:
+        """Verifies storage handles OSError during initialization gracefully.
+
+        Tests that _ensure_files_exist catches and logs OSError when
+        file initialization fails.
+
+        Business context:
+        Permission issues or disk full conditions during init should
+        be logged but not crash the entire application.
+        """
+        from unittest.mock import patch
+
+        # Make the filesystem raise OSError on makedirs
+        with patch.object(mock_fs, "makedirs", side_effect=OSError("Permission denied")):
+            # Should not raise - error is caught and logged
+            storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
+            # Storage is created but may have empty/default state
+            assert storage is not None

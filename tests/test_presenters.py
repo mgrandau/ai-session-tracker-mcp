@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from unittest.mock import MagicMock
 
 import pytest
@@ -226,107 +227,37 @@ class TestSessionViewModel:
         )
         assert vm.effectiveness_stars == "—"
 
-    def test_status_class_active(self) -> None:
-        """Verifies status_class returns correct CSS class for active.
-
-        Tests that active sessions get the appropriate CSS class
-        for styling.
+    @pytest.mark.parametrize(
+        "status,expected_class",
+        [
+            pytest.param("active", "status-active", id="active"),
+            pytest.param("completed", "status-completed", id="completed"),
+            pytest.param("abandoned", "status-abandoned", id="abandoned"),
+        ],
+    )
+    def test_status_class(self, status: str, expected_class: str) -> None:
+        """Verifies status_class returns correct CSS class for session status.
 
         Business context:
-        Status classes enable color-coded status indicators in UI.
-        Active sessions typically shown in blue/progress color.
-
-        Arrangement:
-        Create view model with 'active' status.
-
-        Action:
-        Access status_class property.
-
-        Assertion Strategy:
-        Validates CSS class matches expected value.
+        Status classes enable color-coded status indicators in UI:
+        - active: Blue/progress color (in-progress sessions)
+        - completed: Green/success color (finished sessions)
+        - abandoned: Red/warning color (incomplete work needing attention)
 
         Testing Principle:
-        Validates status to CSS mapping.
+        Parameterized test validates status to CSS mapping.
         """
         vm = SessionViewModel(
             session_id="x",
             project="p",
-            status="active",
+            status=status,
             duration_minutes=0,
             interaction_count=0,
             effectiveness_avg=0,
             start_time="",
             end_time=None,
         )
-        assert vm.status_class == "status-active"
-
-    def test_status_class_completed(self) -> None:
-        """Verifies status_class returns correct CSS class for completed.
-
-        Tests that completed sessions get the appropriate CSS class
-        for success styling.
-
-        Business context:
-        Completed sessions shown in green/success color to indicate
-        successful task completion.
-
-        Arrangement:
-        Create view model with 'completed' status.
-
-        Action:
-        Access status_class property.
-
-        Assertion Strategy:
-        Validates CSS class matches expected value.
-
-        Testing Principle:
-        Validates status to CSS mapping for success state.
-        """
-        vm = SessionViewModel(
-            session_id="x",
-            project="p",
-            status="completed",
-            duration_minutes=0,
-            interaction_count=0,
-            effectiveness_avg=0,
-            start_time="",
-            end_time=None,
-        )
-        assert vm.status_class == "status-completed"
-
-    def test_status_class_abandoned(self) -> None:
-        """Verifies status_class returns correct CSS class for abandoned.
-
-        Tests that abandoned sessions get the appropriate CSS class
-        for warning styling.
-
-        Business context:
-        Abandoned sessions shown in red/warning color to highlight
-        incomplete work that may need attention.
-
-        Arrangement:
-        Create view model with 'abandoned' status.
-
-        Action:
-        Access status_class property.
-
-        Assertion Strategy:
-        Validates CSS class matches expected value.
-
-        Testing Principle:
-        Validates status to CSS mapping for failure state.
-        """
-        vm = SessionViewModel(
-            session_id="x",
-            project="p",
-            status="abandoned",
-            duration_minutes=0,
-            interaction_count=0,
-            effectiveness_avg=0,
-            start_time="",
-            end_time=None,
-        )
-        assert vm.status_class == "status-abandoned"
+        assert vm.status_class == expected_class
 
 
 class TestROIViewModel:
@@ -473,27 +404,30 @@ class TestROIViewModel:
         )
         assert vm.cost_saved_display == "$1,234.56"
 
-    def test_roi_class_excellent(self) -> None:
-        """Verifies roi_class returns 'excellent' for >= 50%.
-
-        Tests that ROI >= 50% gets the excellent classification
-        for positive styling.
+    @pytest.mark.parametrize(
+        "roi_percentage,expected_class",
+        [
+            pytest.param(60.0, "roi-excellent", id="excellent_ge_50"),
+            pytest.param(50.0, "roi-excellent", id="excellent_at_50"),
+            pytest.param(30.0, "roi-good", id="good_ge_25"),
+            pytest.param(25.0, "roi-good", id="good_at_25"),
+            pytest.param(10.0, "roi-neutral", id="neutral_ge_0"),
+            pytest.param(0.0, "roi-neutral", id="neutral_at_0"),
+            pytest.param(-10.0, "roi-negative", id="negative_lt_0"),
+        ],
+    )
+    def test_roi_class(self, roi_percentage: float, expected_class: str) -> None:
+        """Verifies roi_class returns correct CSS class for ROI thresholds.
 
         Business context:
-        ROI classification enables color-coded metrics. Excellent
-        ROI shown in green to highlight strong AI value.
-
-        Arrangement:
-        Create ROI view model with 60% ROI.
-
-        Action:
-        Access roi_class property.
-
-        Assertion Strategy:
-        Validates class is 'roi-excellent'.
+        ROI classification enables color-coded metrics:
+        - excellent (>=50%): Green, strong AI value
+        - good (>=25%): Light green, positive returns
+        - neutral (>=0%): Gray, break-even
+        - negative (<0%): Red, loss on investment
 
         Testing Principle:
-        Validates threshold classification logic.
+        Parameterized test validates threshold classification logic.
         """
         vm = ROIViewModel(
             total_sessions=0,
@@ -504,114 +438,9 @@ class TestROIViewModel:
             human_baseline_cost=0,
             total_ai_cost=0,
             cost_saved=0,
-            roi_percentage=60.0,
+            roi_percentage=roi_percentage,
         )
-        assert vm.roi_class == "roi-excellent"
-
-    def test_roi_class_good(self) -> None:
-        """Verifies roi_class returns 'good' for >= 25%.
-
-        Tests that ROI between 25% and 50% gets the good
-        classification.
-
-        Business context:
-        Good ROI indicates positive but not exceptional returns.
-        Shown in lighter green or yellow for moderate success.
-
-        Arrangement:
-        Create ROI view model with 30% ROI.
-
-        Action:
-        Access roi_class property.
-
-        Assertion Strategy:
-        Validates class is 'roi-good'.
-
-        Testing Principle:
-        Validates threshold classification logic.
-        """
-        vm = ROIViewModel(
-            total_sessions=0,
-            completed_sessions=0,
-            total_ai_hours=0,
-            estimated_human_hours=0,
-            time_saved_hours=0,
-            human_baseline_cost=0,
-            total_ai_cost=0,
-            cost_saved=0,
-            roi_percentage=30.0,
-        )
-        assert vm.roi_class == "roi-good"
-
-    def test_roi_class_neutral(self) -> None:
-        """Verifies roi_class returns 'neutral' for >= 0%.
-
-        Tests that ROI between 0% and 25% gets the neutral
-        classification.
-
-        Business context:
-        Neutral ROI indicates break-even. Shown in gray/neutral
-        color indicating neither loss nor significant gain.
-
-        Arrangement:
-        Create ROI view model with 10% ROI.
-
-        Action:
-        Access roi_class property.
-
-        Assertion Strategy:
-        Validates class is 'roi-neutral'.
-
-        Testing Principle:
-        Validates threshold classification logic.
-        """
-        vm = ROIViewModel(
-            total_sessions=0,
-            completed_sessions=0,
-            total_ai_hours=0,
-            estimated_human_hours=0,
-            time_saved_hours=0,
-            human_baseline_cost=0,
-            total_ai_cost=0,
-            cost_saved=0,
-            roi_percentage=10.0,
-        )
-        assert vm.roi_class == "roi-neutral"
-
-    def test_roi_class_negative(self) -> None:
-        """Verifies roi_class returns 'negative' for < 0%.
-
-        Tests that negative ROI gets the negative classification
-        for warning styling.
-
-        Business context:
-        Negative ROI indicates loss on AI investment. Shown in red
-        to flag areas needing improvement.
-
-        Arrangement:
-        Create ROI view model with -10% ROI.
-
-        Action:
-        Access roi_class property.
-
-        Assertion Strategy:
-        Validates class is 'roi-negative'.
-
-        Testing Principle:
-        Validates threshold classification for negative values.
-        """
-        vm = ROIViewModel(
-            total_sessions=0,
-            completed_sessions=0,
-            total_ai_hours=0,
-            estimated_human_hours=0,
-            time_saved_hours=0,
-            human_baseline_cost=0,
-            total_ai_cost=0,
-            cost_saved=0,
-            roi_percentage=-10.0,
-        )
-        assert vm.roi_class == "roi-negative"
+        assert vm.roi_class == expected_class
 
 
 class TestEffectivenessViewModel:
@@ -1178,3 +1007,232 @@ class TestChartPresenter:
 
         png = presenter.render_sessions_timeline()
         assert isinstance(png, bytes)
+
+    @pytest.mark.skipif(not _has_matplotlib(), reason="matplotlib not installed")
+    def test_render_sessions_timeline_with_data(self) -> None:
+        """Verifies render_sessions_timeline renders session bars.
+
+        Tests that timeline chart shows sessions when data exists,
+        with bars colored by status.
+
+        Business context:
+        Timeline chart visualizes session duration over time.
+        Must handle actual session data correctly.
+
+        Arrangement:
+        Create mock storage with two sessions (completed and active).
+
+        Action:
+        Call render_sessions_timeline method.
+
+        Assertion Strategy:
+        Validates bytes type and PNG magic header for valid output.
+
+        Testing Principle:
+        Validates timeline with actual data.
+        """
+        from datetime import datetime, timedelta
+
+        mock_storage = MagicMock(spec=StorageManager)
+        base = datetime.now(UTC)
+        mock_storage.load_sessions.return_value = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(hours=1)).isoformat(),
+                "status": "completed",
+            },
+            "s2": {
+                "start_time": (base + timedelta(hours=2)).isoformat(),
+                "end_time": (base + timedelta(hours=3)).isoformat(),
+                "status": "active",
+            },
+        }
+
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        png = presenter.render_sessions_timeline()
+        assert isinstance(png, bytes)
+        assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+    @pytest.mark.skipif(not _has_matplotlib(), reason="matplotlib not installed")
+    def test_render_sessions_timeline_skips_invalid_timestamps(self) -> None:
+        """Verifies timeline skips sessions with invalid timestamps.
+
+        Tests that sessions with unparseable timestamps are silently
+        skipped rather than causing errors.
+
+        Business context:
+        Corrupted data should not break chart rendering.
+        """
+        from datetime import datetime, timedelta
+
+        mock_storage = MagicMock(spec=StorageManager)
+        base = datetime.now(UTC)
+        mock_storage.load_sessions.return_value = {
+            "s1": {
+                "start_time": "invalid-timestamp",
+                "end_time": "also-invalid",
+                "status": "completed",
+            },
+            "s2": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(hours=1)).isoformat(),
+                "status": "active",
+            },
+        }
+
+        stats = StatisticsEngine()
+        presenter = ChartPresenter(mock_storage, stats)
+
+        # Should not raise
+        png = presenter.render_sessions_timeline()
+        assert isinstance(png, bytes)
+
+
+class TestSessionViewModelStartTimeDisplay:
+    """Tests for SessionViewModel.start_time_display property."""
+
+    def test_start_time_display_valid(self) -> None:
+        """Verifies start_time_display formats valid ISO timestamp.
+
+        Tests that valid ISO timestamps are converted to HH:MM:SS format.
+        """
+        vm = SessionViewModel(
+            session_id="x",
+            project="p",
+            status="active",
+            duration_minutes=0,
+            interaction_count=0,
+            effectiveness_avg=0,
+            start_time="2024-01-15T14:30:45+00:00",
+            end_time=None,
+        )
+        assert vm.start_time_display == "14:30:45"
+
+    def test_start_time_display_empty(self) -> None:
+        """Verifies start_time_display handles empty string.
+
+        Tests that empty start_time returns em-dash placeholder.
+        """
+        vm = SessionViewModel(
+            session_id="x",
+            project="p",
+            status="active",
+            duration_minutes=0,
+            interaction_count=0,
+            effectiveness_avg=0,
+            start_time="",
+            end_time=None,
+        )
+        assert vm.start_time_display == "—"
+
+    def test_start_time_display_invalid(self) -> None:
+        """Verifies start_time_display handles invalid timestamp.
+
+        Tests that invalid timestamps return em-dash placeholder.
+        """
+        vm = SessionViewModel(
+            session_id="x",
+            project="p",
+            status="active",
+            duration_minutes=0,
+            interaction_count=0,
+            effectiveness_avg=0,
+            start_time="not-a-valid-timestamp",
+            end_time=None,
+        )
+        assert vm.start_time_display == "—"
+
+    def test_start_time_display_with_z_suffix(self) -> None:
+        """Verifies start_time_display handles Z timezone suffix.
+
+        Tests that ISO timestamps with Z suffix are parsed correctly.
+        """
+        vm = SessionViewModel(
+            session_id="x",
+            project="p",
+            status="active",
+            duration_minutes=0,
+            interaction_count=0,
+            effectiveness_avg=0,
+            start_time="2024-01-15T14:30:45Z",
+            end_time=None,
+        )
+        assert vm.start_time_display == "14:30:45"
+
+
+class TestSessionGapViewModel:
+    """Tests for SessionGapViewModel properties."""
+
+    def test_duration_display_minutes(self) -> None:
+        """Verifies duration_display shows minutes for gaps < 60min."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=45.0,
+            classification="normal",
+        )
+        assert vm.duration_display == "45m"
+
+    def test_duration_display_hours(self) -> None:
+        """Verifies duration_display shows hours for gaps >= 60min."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=120.0,
+            classification="extended",
+        )
+        assert vm.duration_display == "2.0h"
+
+    def test_classification_emoji_quick(self) -> None:
+        """Verifies classification_emoji for quick gaps."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=3.0,
+            classification="quick",
+        )
+        assert vm.classification_emoji == "⚡"
+
+    def test_classification_emoji_long_break(self) -> None:
+        """Verifies classification_emoji for long breaks."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=180.0,
+            classification="long_break",
+        )
+        assert vm.classification_emoji == "🔴"
+
+    def test_classification_emoji_unknown(self) -> None:
+        """Verifies classification_emoji returns default for unknown types."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=30.0,
+            classification="unknown_type",
+        )
+        assert vm.classification_emoji == "•"
+
+    def test_classification_class(self) -> None:
+        """Verifies classification_class returns proper CSS class."""
+        from ai_session_tracker_mcp.presenters import SessionGapViewModel
+
+        vm = SessionGapViewModel(
+            from_session="s1",
+            to_session="s2",
+            duration_minutes=180.0,
+            classification="long_break",
+        )
+        assert vm.classification_class == "gap-long-break"

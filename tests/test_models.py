@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+import pytest
+
 from ai_session_tracker_mcp.models import (
     FunctionMetrics,
     Interaction,
@@ -97,83 +99,36 @@ class TestHelperFunctions:
         pattern = r"^[a-z0-9_]+_\d{8}_\d{6}$"
         assert re.match(pattern, result)
 
-    def test_generate_session_id_sanitizes_spaces(self) -> None:
-        """Verifies session ID replaces spaces with underscores.
+    @pytest.mark.parametrize(
+        "input_name,expected_substring,forbidden_char",
+        [
+            pytest.param("hello world", "hello_world", " ", id="sanitizes_spaces"),
+            pytest.param("hello-world", "hello_world", "-", id="sanitizes_hyphens"),
+            pytest.param("HELLO World", "hello_world", None, id="lowercases"),
+        ],
+    )
+    def test_generate_session_id_sanitization(
+        self, input_name: str, expected_substring: str, forbidden_char: str | None
+    ) -> None:
+        """Verifies session ID sanitizes input names correctly.
 
-        Tests that whitespace is converted to underscores for valid
-        identifier characters.
-
-        Business context:
-        IDs are used in filenames and URLs. Spaces cause escaping
-        issues and break command-line usage.
-
-        Arrangement:
-        Input name with space between words.
-
-        Action:
-        Call _generate_session_id() with spaced name.
-
-        Assertion Strategy:
-        Validates underscore present and no spaces remain.
-
-        Testing Principle:
-        Validates sanitization for filesystem safety.
-        """
-        result = _generate_session_id("hello world")
-        assert "hello_world" in result
-        assert " " not in result
-
-    def test_generate_session_id_sanitizes_hyphens(self) -> None:
-        """Verifies session ID replaces hyphens with underscores.
-
-        Tests that hyphens are converted for consistent underscore-based
-        word separation.
+        Tests that spaces become underscores, hyphens become underscores,
+        and uppercase is converted to lowercase.
 
         Business context:
-        Consistent separator character simplifies parsing and prevents
-        confusion with date separators.
-
-        Arrangement:
-        Input name with hyphen between words.
-
-        Action:
-        Call _generate_session_id() with hyphenated name.
-
-        Assertion Strategy:
-        Validates underscore present and no hyphens remain.
+        IDs are used in filenames and URLs. Proper sanitization ensures
+        filesystem safety and consistent word separation.
 
         Testing Principle:
-        Validates consistent word separation.
+        Parameterized test validates sanitization rules.
         """
-        result = _generate_session_id("hello-world")
-        assert "hello_world" in result
-        assert "-" not in result
-
-    def test_generate_session_id_lowercases(self) -> None:
-        """Verifies session ID is converted to lowercase.
-
-        Tests that all characters are lowercased for case-insensitive
-        comparison and consistent appearance.
-
-        Business context:
-        Lowercase IDs prevent case-sensitivity issues in lookups and
-        provide consistent visual appearance.
-
-        Arrangement:
-        Input name with mixed case.
-
-        Action:
-        Call _generate_session_id() with uppercase letters.
-
-        Assertion Strategy:
-        Validates no uppercase characters in result.
-
-        Testing Principle:
-        Validates case normalization.
-        """
-        result = _generate_session_id("HELLO World")
-        assert "hello_world" in result
-        assert not any(c.isupper() for c in result)
+        result = _generate_session_id(input_name)
+        assert expected_substring in result
+        if forbidden_char:
+            assert forbidden_char not in result
+        else:
+            # For lowercase test, verify no uppercase
+            assert not any(c.isupper() for c in result)
 
     def test_generate_session_id_truncates_long_names(self) -> None:
         """Verifies session ID truncates names longer than 30 characters.
@@ -184,18 +139,6 @@ class TestHelperFunctions:
         Business context:
         Long IDs are hard to read and may cause display issues. 30
         character limit balances readability with uniqueness.
-
-        Arrangement:
-        Input name with 50 characters.
-
-        Action:
-        Call _generate_session_id() with long name.
-
-        Assertion Strategy:
-        Validates first segment (before date) is at most 30 chars.
-
-        Testing Principle:
-        Validates length constraint enforcement.
         """
         long_name = "a" * 50
         result = _generate_session_id(long_name)
@@ -239,214 +182,134 @@ class TestSession:
         assert session.id is not None
         assert len(session.id) > 0
 
-    def test_create_sets_name(self) -> None:
-        """Verifies Session.create() sets session name.
+    @pytest.mark.parametrize(
+        "session_kwargs,attr_name,expected_value",
+        [
+            pytest.param(
+                {
+                    "name": "Test Session",
+                    "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 30.0,
+                    "estimate_source": "manual",
+                },
+                "name",
+                "Test Session",
+                id="name",
+            ),
+            pytest.param(
+                {
+                    "name": "Test",
+                    "task_type": "debugging",
+                    "model_name": "gpt-4o",
+                    "human_time_estimate_minutes": 60.0,
+                    "estimate_source": "issue_tracker",
+                },
+                "task_type",
+                "debugging",
+                id="task_type",
+            ),
+            pytest.param(
+                {
+                    "name": "Test",
+                    "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 30.0,
+                    "estimate_source": "manual",
+                },
+                "model_name",
+                "claude-opus-4-20250514",
+                id="model_name",
+            ),
+            pytest.param(
+                {
+                    "name": "Test",
+                    "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 45.5,
+                    "estimate_source": "manual",
+                },
+                "human_time_estimate_minutes",
+                45.5,
+                id="human_time_estimate",
+            ),
+            pytest.param(
+                {
+                    "name": "Test",
+                    "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 30.0,
+                    "estimate_source": "issue_tracker",
+                },
+                "estimate_source",
+                "issue_tracker",
+                id="estimate_source",
+            ),
+            pytest.param(
+                {
+                    "name": "Test",
+                    "task_type": "code_generation",
+                    "model_name": "claude-opus-4-20250514",
+                    "human_time_estimate_minutes": 30.0,
+                    "estimate_source": "manual",
+                    "context": "Some context",
+                },
+                "context",
+                "Some context",
+                id="context",
+            ),
+        ],
+    )
+    def test_create_sets_field(
+        self, session_kwargs: dict, attr_name: str, expected_value: object
+    ) -> None:
+        """Verifies Session.create() correctly sets various fields.
 
-        Tests that the provided name is stored in the session for
-        display and identification purposes.
+        Tests that each field provided to the factory method is stored
+        correctly in the session object.
 
         Business context:
-        Session names appear in dashboards and reports. Human-readable
-        names help users identify sessions.
-
-        Arrangement:
-        Create session with descriptive name.
-
-        Action:
-        Call Session.create() and access name property.
-
-        Assertion Strategy:
-        Validates name matches provided value.
+        Session fields are used for display, filtering, and ROI calculations.
+        All fields must be accurately stored.
 
         Testing Principle:
-        Validates field assignment from factory.
+        Parameterized test validates field assignment from factory.
         """
         session = Session.create(
-            "Test Session",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
+            session_kwargs["name"],
+            session_kwargs["task_type"],
+            model_name=session_kwargs["model_name"],
+            human_time_estimate_minutes=session_kwargs["human_time_estimate_minutes"],
+            estimate_source=session_kwargs["estimate_source"],
+            context=session_kwargs.get("context", ""),
         )
-        assert session.name == "Test Session"
+        assert getattr(session, attr_name) == expected_value
 
-    def test_create_sets_task_type(self) -> None:
-        """Verifies Session.create() sets task type.
+    @pytest.mark.parametrize(
+        "attr_name,expected_value",
+        [
+            pytest.param("context", "", id="context_empty"),
+            pytest.param("status", "active", id="status_active"),
+            pytest.param("end_time", None, id="end_time_none"),
+            pytest.param("outcome", None, id="outcome_none"),
+            pytest.param("notes", "", id="notes_empty"),
+            pytest.param("total_interactions", 0, id="total_interactions_zero"),
+            pytest.param("avg_effectiveness", 0.0, id="avg_effectiveness_zero"),
+            pytest.param("code_metrics", [], id="code_metrics_empty"),
+        ],
+    )
+    def test_create_defaults(self, attr_name: str, expected_value: object) -> None:
+        """Verifies Session.create() sets sensible default values.
 
-        Tests that the task type is stored for categorizing the work
-        and filtering in reports.
+        Tests that optional fields default to appropriate values when
+        not explicitly provided.
 
         Business context:
-        Task type enables filtering and categorization. ROI calculations
-        may exclude certain types like human_review.
-
-        Arrangement:
-        Create session with 'debugging' task type.
-
-        Action:
-        Call Session.create() and access task_type property.
-
-        Assertion Strategy:
-        Validates task_type matches provided value.
+        Default values enable creating sessions with minimal required
+        fields. Empty/zero defaults prevent None handling issues.
 
         Testing Principle:
-        Validates field assignment from factory.
-        """
-        session = Session.create(
-            "Test",
-            "debugging",
-            model_name="gpt-4o",
-            human_time_estimate_minutes=60.0,
-            estimate_source="issue_tracker",
-        )
-        assert session.task_type == "debugging"
-
-    def test_create_sets_model_name(self) -> None:
-        """Verifies Session.create() sets AI model name.
-
-        Tests that the model name is stored for tracking which AI
-        was used in the session.
-
-        Business context:
-        Model name enables analysis by AI provider/model. Helps
-        identify which models are most effective.
-
-        Arrangement:
-        Create session with specific model name.
-
-        Action:
-        Call Session.create() and access model_name property.
-
-        Assertion Strategy:
-        Validates model_name matches provided value.
-
-        Testing Principle:
-        Validates field assignment from factory.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.model_name == "claude-opus-4-20250514"
-
-    def test_create_sets_human_time_estimate(self) -> None:
-        """Verifies Session.create() sets human time estimate.
-
-        Tests that the human baseline estimate is stored for ROI
-        calculation.
-
-        Business context:
-        Human time estimate is the baseline for productivity gain
-        calculations. Essential for ROI metrics.
-
-        Arrangement:
-        Create session with specific time estimate.
-
-        Action:
-        Call Session.create() and access human_time_estimate_minutes.
-
-        Assertion Strategy:
-        Validates estimate matches provided value exactly.
-
-        Testing Principle:
-        Validates numeric field precision.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=45.5,
-            estimate_source="manual",
-        )
-        assert session.human_time_estimate_minutes == 45.5
-
-    def test_create_sets_estimate_source(self) -> None:
-        """Verifies Session.create() sets estimate source.
-
-        Tests that the source of time estimate is tracked for
-        data quality assessment.
-
-        Business context:
-        Estimate source indicates reliability. Issue tracker estimates
-        may be more accurate than manual guesses.
-
-        Arrangement:
-        Create session with 'issue_tracker' source.
-
-        Action:
-        Call Session.create() and access estimate_source property.
-
-        Assertion Strategy:
-        Validates source matches provided value.
-
-        Testing Principle:
-        Validates metadata field assignment.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="issue_tracker",
-        )
-        assert session.estimate_source == "issue_tracker"
-
-    def test_create_sets_context(self) -> None:
-        """Verifies Session.create() sets optional context.
-
-        Tests that additional context description is stored when
-        provided.
-
-        Business context:
-        Context provides details about what work is being done.
-        Helps understand session purpose in reports.
-
-        Arrangement:
-        Create session with context string.
-
-        Action:
-        Call Session.create() and access context property.
-
-        Assertion Strategy:
-        Validates context matches provided value.
-
-        Testing Principle:
-        Validates optional field handling.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-            context="Some context",
-        )
-        assert session.context == "Some context"
-
-    def test_create_defaults_context_empty(self) -> None:
-        """Verifies Session.create() defaults context to empty string.
-
-        Tests that omitting context results in empty string rather
-        than None for consistent string handling.
-
-        Business context:
-        Empty string is easier to handle than None in templates
-        and string concatenation.
-
-        Arrangement:
-        Create session without context parameter.
-
-        Action:
-        Call Session.create() and access context property.
-
-        Assertion Strategy:
-        Validates context equals empty string.
-
-        Testing Principle:
-        Validates sensible default value.
+        Parameterized test validates default value assignment.
         """
         session = Session.create(
             "Test",
@@ -455,7 +318,7 @@ class TestSession:
             human_time_estimate_minutes=30.0,
             estimate_source="manual",
         )
-        assert session.context == ""
+        assert getattr(session, attr_name) == expected_value
 
     def test_create_sets_start_time(self) -> None:
         """Verifies Session.create() sets start_time to current timestamp.
@@ -489,223 +352,6 @@ class TestSession:
         assert session.start_time is not None
         # Should be parseable
         datetime.fromisoformat(session.start_time)
-
-    def test_create_defaults_status_active(self) -> None:
-        """Verifies Session.create() defaults status to active.
-
-        Tests that new sessions start in 'active' state, indicating
-        work is in progress.
-
-        Business context:
-        Active status distinguishes sessions that are in-progress from
-        completed ones. Used for filtering and ROI statistics.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access status property.
-
-        Assertion Strategy:
-        Validates status equals 'active' string.
-
-        Testing Principle:
-        Validates initial state invariant.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.status == "active"
-
-    def test_create_defaults_end_time_none(self) -> None:
-        """Verifies Session.create() defaults end_time to None.
-
-        Tests that new sessions have no end time since they are still
-        in progress.
-
-        Business context:
-        None end_time indicates session is active. End time is set when
-        session is completed via the end() method.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access end_time property.
-
-        Assertion Strategy:
-        Validates end_time is None.
-
-        Testing Principle:
-        Validates nullable field initial state.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.end_time is None
-
-    def test_create_defaults_outcome_none(self) -> None:
-        """Verifies Session.create() defaults outcome to None.
-
-        Tests that new sessions have no outcome since they haven't been
-        completed yet.
-
-        Business context:
-        Outcome (success/partial/failed) is set on session end. None
-        indicates session is still in progress.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access outcome property.
-
-        Assertion Strategy:
-        Validates outcome is None.
-
-        Testing Principle:
-        Validates terminal state field initial value.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.outcome is None
-
-    def test_create_defaults_notes_empty(self) -> None:
-        """Verifies Session.create() defaults notes to empty string.
-
-        Tests that notes field starts as empty string for consistent
-        string handling.
-
-        Business context:
-        Empty string is easier to handle than None in templates and
-        string concatenation. Notes are added on session end.
-
-        Arrangement:
-        Create session without notes parameter.
-
-        Action:
-        Call Session.create() and access notes property.
-
-        Assertion Strategy:
-        Validates notes equals empty string.
-
-        Testing Principle:
-        Validates sensible default value.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.notes == ""
-
-    def test_create_defaults_total_interactions_zero(self) -> None:
-        """Verifies Session.create() defaults total_interactions to 0.
-
-        Tests that new sessions start with zero interactions, to be
-        incremented as interactions are logged.
-
-        Business context:
-        Interaction count is a key productivity metric. Tracks how many
-        AI exchanges occurred during the session.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access total_interactions property.
-
-        Assertion Strategy:
-        Validates total_interactions equals 0.
-
-        Testing Principle:
-        Validates counter initial value.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.total_interactions == 0
-
-    def test_create_defaults_avg_effectiveness_zero(self) -> None:
-        """Verifies Session.create() defaults avg_effectiveness to 0.0.
-
-        Tests that new sessions start with zero effectiveness, to be
-        calculated from interaction ratings.
-
-        Business context:
-        Average effectiveness (1-5 scale) indicates AI quality. Updated
-        as interactions are logged with effectiveness ratings.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access avg_effectiveness property.
-
-        Assertion Strategy:
-        Validates avg_effectiveness equals 0.0.
-
-        Testing Principle:
-        Validates calculated field initial value.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.avg_effectiveness == 0.0
-
-    def test_create_defaults_code_metrics_empty(self) -> None:
-        """Verifies Session.create() defaults code_metrics to empty list.
-
-        Tests that new sessions start with no code metrics, to be
-        populated via log_code_metrics tool.
-
-        Business context:
-        Code metrics track functions added/modified with complexity
-        scores. Empty list until metrics are logged.
-
-        Arrangement:
-        Create a new session.
-
-        Action:
-        Call Session.create() and access code_metrics property.
-
-        Assertion Strategy:
-        Validates code_metrics equals empty list.
-
-        Testing Principle:
-        Validates collection field initial state.
-        """
-        session = Session.create(
-            "Test",
-            "code_generation",
-            model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
-            estimate_source="manual",
-        )
-        assert session.code_metrics == []
 
     def test_end_sets_status_completed(self) -> None:
         """Verifies Session.end() sets status to completed.

@@ -5,265 +5,44 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
+
 from ai_session_tracker_mcp.config import Config
 
 
 class TestConfigConstants:
     """Tests for static configuration values."""
 
-    def test_storage_dir_value(self) -> None:
-        """Verifies storage directory has expected value.
+    @pytest.mark.parametrize(
+        "attr_name,expected_value",
+        [
+            pytest.param("STORAGE_DIR", ".ai_sessions", id="storage_dir"),
+            pytest.param("SESSIONS_FILE", "sessions.json", id="sessions_file"),
+            pytest.param("INTERACTIONS_FILE", "interactions.json", id="interactions_file"),
+            pytest.param("ISSUES_FILE", "issues.json", id="issues_file"),
+            pytest.param("CHARTS_DIR", "charts", id="charts_dir"),
+            pytest.param("HUMAN_HOURLY_RATE", 130.0, id="human_hourly_rate"),
+            pytest.param("AI_MONTHLY_COST", 40.0, id="ai_monthly_cost"),
+            pytest.param("WORKING_HOURS_PER_MONTH", 160.0, id="working_hours"),
+            pytest.param("MCP_VERSION", "2024-11-05", id="mcp_version"),
+            pytest.param("SERVER_NAME", "ai-session-tracker", id="server_name"),
+            pytest.param("SERVER_VERSION", "0.1.0", id="server_version"),
+        ],
+    )
+    def test_config_constant_value(self, attr_name: str, expected_value: object) -> None:
+        """Verifies Config constants have expected values.
 
-        Tests that the storage directory constant matches the expected
-        hidden directory name for session data.
-
-        Business context:
-        Storage directory path is used throughout the codebase.
-        Changing it would affect where data is stored.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.STORAGE_DIR constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates configuration constant value.
-        """
-        assert Config.STORAGE_DIR == ".ai_sessions"
-
-    def test_sessions_file_value(self) -> None:
-        """Verifies sessions file has expected value.
-
-        Tests that the sessions filename constant matches expected value.
+        Tests that configuration constants match expected values for
+        storage paths, file names, and business parameters.
 
         Business context:
-        Sessions are stored in this file. Name must be consistent
-        for data loading to work correctly.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.SESSIONS_FILE constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
+        Configuration constants are used throughout the codebase.
+        Changing them would affect storage locations and ROI calculations.
 
         Testing Principle:
-        Validates configuration constant value.
+        Parameterized test validates all constant values efficiently.
         """
-        assert Config.SESSIONS_FILE == "sessions.json"
-
-    def test_interactions_file_value(self) -> None:
-        """Verifies interactions file has expected value.
-
-        Tests that the interactions filename constant matches expected value.
-
-        Business context:
-        Interactions are stored in this file. Name must be consistent
-        for data loading to work correctly.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.INTERACTIONS_FILE constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates configuration constant value.
-        """
-        assert Config.INTERACTIONS_FILE == "interactions.json"
-
-    def test_issues_file_value(self) -> None:
-        """Verifies issues file has expected value.
-
-        Tests that the issues filename constant matches expected value.
-
-        Business context:
-        Issues are stored in this file. Name must be consistent
-        for data loading to work correctly.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.ISSUES_FILE constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates configuration constant value.
-        """
-        assert Config.ISSUES_FILE == "issues.json"
-
-    def test_charts_dir_value(self) -> None:
-        """Verifies charts directory has expected value.
-
-        Tests that the charts subdirectory name matches expected value.
-
-        Business context:
-        Charts/visualizations are stored in this subdirectory.
-        Used by reporting features.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.CHARTS_DIR constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates configuration constant value.
-        """
-        assert Config.CHARTS_DIR == "charts"
-
-    def test_human_hourly_rate_default(self) -> None:
-        """Verifies human hourly rate has default value.
-
-        Tests that the human developer cost baseline is set correctly.
-
-        Business context:
-        Human hourly rate is used for ROI calculations. $130/hr
-        represents senior developer cost.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.HUMAN_HOURLY_RATE constant.
-
-        Assertion Strategy:
-        Validates exact numeric value match.
-
-        Testing Principle:
-        Validates financial constant value.
-        """
-        assert Config.HUMAN_HOURLY_RATE == 130.0
-
-    def test_ai_monthly_cost_default(self) -> None:
-        """Verifies AI monthly cost has default value.
-
-        Tests that the AI subscription cost baseline is set correctly.
-
-        Business context:
-        AI monthly cost is used for ROI calculations. $40/month
-        represents typical AI subscription tier.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.AI_MONTHLY_COST constant.
-
-        Assertion Strategy:
-        Validates exact numeric value match.
-
-        Testing Principle:
-        Validates financial constant value.
-        """
-        assert Config.AI_MONTHLY_COST == 40.0
-
-    def test_working_hours_per_month_default(self) -> None:
-        """Verifies working hours per month has default value.
-
-        Tests that the monthly work hours baseline is set correctly.
-
-        Business context:
-        Working hours are used to convert monthly AI cost to hourly.
-        160 hours represents standard full-time month.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.WORKING_HOURS_PER_MONTH constant.
-
-        Assertion Strategy:
-        Validates exact numeric value match.
-
-        Testing Principle:
-        Validates business assumption constant.
-        """
-        assert Config.WORKING_HOURS_PER_MONTH == 160.0
-
-    def test_mcp_version_value(self) -> None:
-        """Verifies MCP version has expected value.
-
-        Tests that the Model Context Protocol version is set correctly.
-
-        Business context:
-        MCP version affects protocol compatibility. Must match the
-        version supported by clients.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.MCP_VERSION constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates protocol version constant.
-        """
-        assert Config.MCP_VERSION == "2024-11-05"
-
-    def test_server_name_value(self) -> None:
-        """Verifies server name has expected value.
-
-        Tests that the MCP server name is set correctly.
-
-        Business context:
-        Server name is reported in capabilities response. Used for
-        identification in client logs.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.SERVER_NAME constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates server identity constant.
-        """
-        assert Config.SERVER_NAME == "ai-session-tracker"
-
-    def test_server_version_value(self) -> None:
-        """Verifies server version has expected value.
-
-        Tests that the MCP server version is set correctly.
-
-        Business context:
-        Server version is reported in capabilities response. Used
-        for compatibility checking and logging.
-
-        Arrangement:
-        None - tests static constant.
-
-        Action:
-        Access Config.SERVER_VERSION constant.
-
-        Assertion Strategy:
-        Validates exact string value match.
-
-        Testing Principle:
-        Validates server version constant.
-        """
-        assert Config.SERVER_VERSION == "0.1.0"
+        assert getattr(Config, attr_name) == expected_value
 
     def test_task_types_is_frozenset(self) -> None:
         """Verifies task types is a frozen set.

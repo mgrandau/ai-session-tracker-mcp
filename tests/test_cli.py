@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import sys
 from io import StringIO
-from unittest.mock import patch
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+if TYPE_CHECKING:
+    from conftest import MockFileSystem
 
 
 class TestCLIParsing:
@@ -42,6 +48,34 @@ class TestCLIParsing:
             result = main()
             assert isinstance(result, int)
             assert result == 0
+
+    def test_version_flag(self) -> None:
+        """Verifies --version flag prints version and exits.
+
+        Tests that the CLI responds to --version with version info.
+
+        Business context:
+        Version flag is standard CLI convention for troubleshooting.
+
+        Arrangement:
+        Mock sys.argv with --version flag.
+
+        Action:
+        Call main() expecting SystemExit.
+
+        Assertion Strategy:
+        Validates SystemExit with code 0 (success).
+        """
+
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch.object(sys, "argv", ["ai-session-tracker", "--version"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+
+        assert exc_info.value.code == 0
 
     def test_server_command(self) -> None:
         """Verifies 'server' subcommand invokes MCP server.
@@ -316,6 +350,551 @@ class TestRunReport:
 
             output = captured.getvalue()
             assert "SESSION SUMMARY" in output or "ANALYTICS REPORT" in output
+
+    def test_run_report_with_injected_dependencies(self) -> None:
+        """Verifies run_report accepts injected storage and engine.
+
+        Tests that the DI parameters allow mocking for testability.
+
+        Business context:
+        DI enables isolated testing without touching real storage.
+
+        Arrangement:
+        Create mock storage and engine instances.
+
+        Action:
+        Call run_report with injected mocks.
+
+        Assertion Strategy:
+        Validates mocks were called with expected methods.
+        """
+        from ai_session_tracker_mcp.cli import run_report
+
+        mock_storage = MagicMock()
+        mock_storage.load_sessions.return_value = {}
+        mock_storage.load_interactions.return_value = []
+        mock_storage.load_issues.return_value = []
+
+        mock_engine = MagicMock()
+        mock_engine.generate_summary_report.return_value = "Test Report"
+
+        captured = StringIO()
+        with patch.object(sys, "stdout", captured):
+            run_report(storage=mock_storage, engine=mock_engine)
+
+        mock_storage.load_sessions.assert_called_once()
+        mock_storage.load_interactions.assert_called_once()
+        mock_storage.load_issues.assert_called_once()
+        mock_engine.generate_summary_report.assert_called_once()
+        assert "Test Report" in captured.getvalue()
+
+
+class TestRunServerWithDashboard:
+    """Tests for run_server with dashboard subprocess."""
+
+    def test_run_server_with_dashboard_spawns_subprocess(self) -> None:
+        """Verifies run_server spawns dashboard subprocess when configured.
+
+        Tests that providing dashboard_host and dashboard_port arguments
+        causes run_server to spawn a background subprocess.
+
+        Business context:
+        Users can optionally run the dashboard alongside the MCP server.
+        This enables a complete setup with a single command.
+
+        Arrangement:
+        1. Create mock subprocess factory to capture invocation.
+        2. Mock asyncio.run to prevent actual server execution.
+
+        Action:
+        Call run_server with dashboard_host, dashboard_port, and subprocess_factory.
+
+        Assertion Strategy:
+        Validates mock factory was called with dashboard arguments.
+        """
+        from ai_session_tracker_mcp.cli import run_server
+
+        mock_process = MagicMock()
+        mock_factory = MagicMock(return_value=mock_process)
+
+        with patch("ai_session_tracker_mcp.cli.asyncio.run"):
+            run_server(
+                dashboard_host="127.0.0.1",
+                dashboard_port=8080,
+                subprocess_factory=mock_factory,
+            )
+
+            mock_factory.assert_called_once()
+            args = mock_factory.call_args[0][0]
+            assert "dashboard" in args
+            assert "--host" in args
+            assert "127.0.0.1" in args
+            assert "--port" in args
+            assert "8080" in args
+
+            # Verify cleanup
+            mock_process.terminate.assert_called_once()
+            mock_process.wait.assert_called_once()
+
+    def test_run_server_handles_subprocess_timeout(self) -> None:
+        """Verifies run_server handles subprocess timeout gracefully.
+
+        Tests that when the dashboard subprocess doesn't terminate in time,
+        run_server kills it forcefully.
+
+        Business context:
+        Subprocesses may hang during shutdown. Server must ensure cleanup
+        even if graceful termination fails.
+
+        Arrangement:
+        1. Create mock subprocess that raises TimeoutExpired on wait().
+        2. Mock asyncio.run to prevent actual server execution.
+
+        Action:
+        Call run_server with dashboard configuration.
+
+        Assertion Strategy:
+        Validates kill() was called after timeout.
+        """
+        import subprocess
+
+        from ai_session_tracker_mcp.cli import run_server
+
+        mock_process = MagicMock()
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="test", timeout=5),
+            None,  # Second call after kill() succeeds
+        ]
+        mock_factory = MagicMock(return_value=mock_process)
+
+        with patch("ai_session_tracker_mcp.cli.asyncio.run"):
+            run_server(
+                dashboard_host="127.0.0.1",
+                dashboard_port=8080,
+                subprocess_factory=mock_factory,
+            )
+
+            # Verify timeout handling
+            mock_process.terminate.assert_called_once()
+            mock_process.kill.assert_called_once()
+            assert mock_process.wait.call_count == 2
+
+    def test_run_server_validates_dashboard_host_port_pair(self) -> None:
+        """Verifies run_server requires both host and port together.
+
+        Tests that providing only dashboard_host or only dashboard_port
+        logs a warning and continues without spawning subprocess.
+
+        Business context:
+        Partial configuration is likely a user error. Warn but don't fail.
+
+        Arrangement:
+        Mock asyncio.run to prevent actual server execution.
+
+        Action:
+        Call run_server with only dashboard_host (no port).
+
+        Assertion Strategy:
+        Validates subprocess not spawned, server still runs.
+        """
+        from ai_session_tracker_mcp.cli import run_server
+
+        mock_factory = MagicMock()
+
+        with patch("ai_session_tracker_mcp.cli.asyncio.run") as mock_asyncio:
+            # Only host provided
+            run_server(
+                dashboard_host="127.0.0.1",
+                dashboard_port=None,
+                subprocess_factory=mock_factory,
+            )
+
+            # Should not spawn subprocess
+            mock_factory.assert_not_called()
+            # Should still run server
+            mock_asyncio.assert_called_once()
+
+    def test_run_server_validates_dashboard_port_only(self) -> None:
+        """Verifies run_server warns when only port provided.
+
+        Tests that providing only dashboard_port (no host) logs warning.
+
+        Arrangement:
+        Mock asyncio.run to prevent actual server execution.
+
+        Action:
+        Call run_server with only dashboard_port (no host).
+
+        Assertion Strategy:
+        Validates subprocess not spawned, server still runs.
+        """
+        from ai_session_tracker_mcp.cli import run_server
+
+        mock_factory = MagicMock()
+
+        with patch("ai_session_tracker_mcp.cli.asyncio.run") as mock_asyncio:
+            # Only port provided
+            run_server(
+                dashboard_host=None,
+                dashboard_port=8080,
+                subprocess_factory=mock_factory,
+            )
+
+            # Should not spawn subprocess
+            mock_factory.assert_not_called()
+            # Should still run server
+            mock_asyncio.assert_called_once()
+
+
+class TestRunInit:
+    """Tests for run_init command."""
+
+    def test_run_init_creates_mcp_json(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init creates .vscode/mcp.json with server config.
+
+        Tests that the init command creates the configuration file
+        in the expected location with proper structure.
+
+        Business context:
+        Users need a simple way to configure the MCP server.
+        run_init automates the setup process.
+
+        Arrangement:
+        Use MockFileSystem for isolated testing.
+
+        Action:
+        Call run_init function with mock filesystem.
+
+        Assertion Strategy:
+        Validates mcp.json exists and contains server configuration.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        assert config_content is not None
+
+        config = json.loads(config_content)
+        assert "servers" in config
+        assert "ai-session-tracker" in config["servers"]
+
+    def test_run_init_updates_existing_config(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init updates existing mcp.json without losing data.
+
+        Tests that run_init preserves existing server configs while
+        adding the ai-session-tracker entry.
+
+        Business context:
+        Users may already have other MCP servers configured. Init
+        should not overwrite their existing configuration.
+
+        Arrangement:
+        Create existing mcp.json with other servers in mock filesystem.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates both original and new servers exist in config.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Set up existing config
+        mock_fs.makedirs("/project/.vscode", exist_ok=True)
+        existing_config = {"servers": {"other-server": {"command": "other"}}}
+        mock_fs.set_file("/project/.vscode/mcp.json", json.dumps(existing_config))
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+
+        assert "other-server" in config["servers"]
+        assert "ai-session-tracker" in config["servers"]
+
+    def test_run_init_handles_invalid_json(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init handles corrupt mcp.json gracefully.
+
+        Tests that run_init creates backup of invalid JSON and
+        proceeds with fresh configuration.
+
+        Business context:
+        Configuration files can become corrupted. Init should
+        recover gracefully rather than failing.
+
+        Arrangement:
+        Create mcp.json with invalid JSON content in mock filesystem.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates backup created and new config is valid.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Set up invalid JSON
+        mock_fs.makedirs("/project/.vscode", exist_ok=True)
+        mock_fs.set_file("/project/.vscode/mcp.json", "{ invalid json }")
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        # Check backup was created
+        assert mock_fs.exists("/project/.vscode/mcp.json.bak")
+
+        # New config should be valid
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+        assert "servers" in config
+
+    def test_run_init_copies_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init copies chatmode and instruction files.
+
+        Tests that init copies bundled files to .github directory
+        for VS Code agent integration.
+
+        Business context:
+        Users need chatmode and instruction files for the tracked
+        agent workflow. Init automates their installation.
+
+        Arrangement:
+        Set up bundled files in mock filesystem.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates .github directories created with copied files.
+        """
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Set up bundled agent files
+        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
+        mock_fs.makedirs("/pkg/agent_files/instructions", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test Chatmode")
+        mock_fs.set_file(
+            "/pkg/agent_files/instructions/test.instructions.md", "# Test Instructions"
+        )
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        # Verify files were copied
+        assert mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+        assert mock_fs.exists("/project/.github/instructions/test.instructions.md")
+        assert mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Test Chatmode"
+
+    def test_run_init_skips_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init doesn't overwrite existing agent files.
+
+        Tests that init skips copying files that already exist at
+        the destination.
+
+        Business context:
+        Users may have customized their agent files. Init should
+        not overwrite their modifications.
+
+        Arrangement:
+        Set up both source and destination files in mock filesystem.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates existing file content is preserved.
+        """
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Set up bundled agent files
+        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# New Content")
+
+        # Set up existing file at destination
+        mock_fs.makedirs("/project/.github/chatmodes", exist_ok=True)
+        mock_fs.set_file("/project/.github/chatmodes/test.chatmode.md", "# Existing Content")
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        # Verify existing content is preserved
+        assert (
+            mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Existing Content"
+        )
+
+    def test_run_init_fallback_to_module_invocation(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init uses module invocation when executable not found.
+
+        Tests that when the ai-session-tracker executable doesn't exist,
+        the config falls back to 'python -m ai_session_tracker_mcp server'.
+
+        Business context:
+        Development environments may not have the executable installed.
+        Module invocation provides a reliable fallback.
+
+        Arrangement:
+        MockFileSystem does not have the executable path, so fs.exists returns False.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates config uses '-m ai_session_tracker_mcp server' args.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        # MockFileSystem doesn't have the bin_dir/ai-session-tracker path,
+        # so fs.exists() returns False for it automatically
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+
+        server_config = config["servers"]["ai-session-tracker"]
+        # Should use module invocation fallback
+        assert server_config["args"] == ["-m", "ai_session_tracker_mcp", "server"]
+        assert server_config["command"] == sys.executable
+
+    def test_run_init_already_up_to_date(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init reports when config is already up to date.
+
+        Tests that when ai-session-tracker is already configured with
+        the same settings, run_init reports it's up to date.
+
+        Business context:
+        Users may run init multiple times. Should gracefully handle
+        already-configured state without unnecessary changes.
+
+        Arrangement:
+        Create config with matching ai-session-tracker entry.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates "already installed and up to date" message shown.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Pre-create config with matching entry
+        mock_fs.makedirs("/project/.vscode", exist_ok=True)
+        existing_config = {
+            "servers": {
+                "ai-session-tracker": {
+                    "command": sys.executable,
+                    "args": ["-m", "ai_session_tracker_mcp", "server"],
+                }
+            }
+        }
+        mock_fs.set_file("/project/.vscode/mcp.json", json.dumps(existing_config))
+
+        captured = StringIO()
+        with patch.object(sys, "stdout", captured):
+            run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        # Log output goes to logger, not stdout - check logging instead
+        # Config should remain unchanged
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+        assert config["servers"]["ai-session-tracker"]["command"] == sys.executable
+
+    def test_run_init_updates_outdated_config(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_init updates config when settings differ.
+
+        Tests that when ai-session-tracker is configured with different
+        settings, run_init updates to current settings.
+
+        Business context:
+        Users may have outdated config from previous install. Init
+        should update to current settings.
+
+        Arrangement:
+        Create config with different ai-session-tracker entry.
+
+        Action:
+        Call run_init function.
+
+        Assertion Strategy:
+        Validates config was updated to new values.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_init
+
+        # Pre-create config with outdated entry
+        mock_fs.makedirs("/project/.vscode", exist_ok=True)
+        existing_config = {
+            "servers": {
+                "ai-session-tracker": {
+                    "command": "/old/path/python",
+                    "args": ["old-args"],
+                }
+            }
+        }
+        mock_fs.set_file("/project/.vscode/mcp.json", json.dumps(existing_config))
+
+        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        # Verify config was updated
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+        assert config["servers"]["ai-session-tracker"]["command"] == sys.executable
+
+
+class TestServerCommandWithDashboard:
+    """Tests for server command with dashboard options."""
+
+    def test_server_command_with_dashboard_options(self) -> None:
+        """Verifies server command accepts dashboard host/port options.
+
+        Tests that the CLI parses dashboard configuration options
+        and passes them to run_server.
+
+        Business context:
+        Advanced users may want to start dashboard alongside server.
+        CLI provides options for this integrated setup.
+
+        Arrangement:
+        1. Mock run_server to capture arguments.
+        2. Mock sys.argv with dashboard options.
+
+        Action:
+        Call main() with server and dashboard options.
+
+        Assertion Strategy:
+        Validates run_server called with dashboard_host and dashboard_port.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_server") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "server",
+                    "--dashboard-host",
+                    "0.0.0.0",
+                    "--dashboard-port",
+                    "9000",
+                ],
+            ),
+        ):
+            main()
+            mock_run.assert_called_once_with(
+                dashboard_host="0.0.0.0",
+                dashboard_port=9000,
+            )
 
 
 class TestMainModule:

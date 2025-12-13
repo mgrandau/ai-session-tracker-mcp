@@ -2,38 +2,19 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
+# Add tests directory to path for conftest imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from ai_session_tracker_mcp.config import Config
-from ai_session_tracker_mcp.filesystem import MockFileSystem
 from ai_session_tracker_mcp.server import SessionTrackerServer
 from ai_session_tracker_mcp.storage import StorageManager
-
-
-@pytest.fixture
-def mock_fs() -> MockFileSystem:
-    """Create a MockFileSystem for testing.
-
-    Provides an in-memory filesystem implementation for isolated testing.
-
-    Args:
-        No arguments required for this fixture.
-
-    Raises:
-        No exceptions raised by this fixture.
-
-    Returns:
-        MockFileSystem: A fresh mock filesystem instance with no pre-existing
-            files or directories, enabling deterministic test behavior.
-
-    Example:
-        def test_something(mock_fs):
-            mock_fs.write_file("/test/file.txt", "content")
-            assert mock_fs.read_file("/test/file.txt") == "content"
-    """
-    return MockFileSystem()
+from conftest import MockFileSystem
 
 
 @pytest.fixture
@@ -415,7 +396,7 @@ class TestHandleMessage:
         """Verifies tools/list returns complete tool definitions.
 
         Tests the MCP tool discovery by requesting tool list and confirming
-        all six session tracking tools are returned.
+        all seven session tracking tools are returned.
 
         Business context:
         AI agents discover available tools via tools/list. Missing tools
@@ -428,7 +409,7 @@ class TestHandleMessage:
         Call handle_message with tools/list request.
 
         Assertion Strategy:
-        Validates response contains exactly 6 tools, confirming
+        Validates response contains exactly 7 tools, confirming
         complete API surface is discoverable.
 
         Testing Principle:
@@ -439,7 +420,7 @@ class TestHandleMessage:
 
         assert "result" in result
         assert "tools" in result["result"]
-        assert len(result["result"]["tools"]) == 6
+        assert len(result["result"]["tools"]) == 7
 
     @pytest.mark.asyncio
     async def test_tools_call_routes_to_handler(self, server: SessionTrackerServer) -> None:
@@ -1304,6 +1285,70 @@ def complex_function(x: int, y: int) -> int:
         assert result["result"]["average_doc_quality"] >= 70
 
     @pytest.mark.asyncio
+    async def test_calculates_doc_score_with_all_sections(
+        self,
+        server: SessionTrackerServer,
+        session_id: str,
+    ) -> None:
+        """Verifies documentation score includes all docstring sections.
+
+        Tests that the handler awards points for Examples and Raises
+        sections in addition to Args and Returns.
+
+        Business context:
+        Comprehensive documentation including examples and error handling
+        documentation indicates high-quality AI output.
+        """
+        import os
+
+        code = '''
+def fully_documented_function(x: int) -> str:
+    """
+    A fully documented function with all sections.
+
+    This is a comprehensive docstring that includes all possible
+    sections to maximize the documentation score.
+
+    Args:
+        x: The input integer to process.
+
+    Returns:
+        A string representation of the input.
+
+    Raises:
+        ValueError: If x is negative.
+
+    Examples:
+        >>> fully_documented_function(42)
+        '42'
+    """
+    if x < 0:
+        raise ValueError("x cannot be negative")
+    return str(x)
+'''
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": session_id,
+                    "file_path": path,
+                    "functions_modified": [
+                        {"name": "fully_documented_function", "modification_type": "added"},
+                    ],
+                },
+                1,
+            )
+
+            # Should have high doc score: 30 (has docstring) + 10 (>50 chars)
+            # + 20 (Args) + 20 (Returns) + 10 (Examples) + 5 (Raises) + 5 (type hints) = 100
+            assert result["result"]["average_doc_quality"] >= 90
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
     async def test_non_python_file_error(
         self, server: SessionTrackerServer, session_id: str
     ) -> None:
@@ -1565,6 +1610,114 @@ class TestGetObservability:
         assert "error" in result
 
 
+class TestHandleGetActiveSessions:
+    """Tests for _handle_get_active_sessions handler."""
+
+    @pytest.mark.asyncio
+    async def test_returns_active_sessions(self, server: SessionTrackerServer) -> None:
+        """Verifies handler returns list of active sessions.
+
+        Tests that sessions with status != 'completed' are returned
+        with their identifying information.
+
+        Business context:
+        When session_id is lost (e.g., after context summarization),
+        AI agents need to recover it to properly end their session.
+        This handler enables that recovery workflow.
+
+        Arrangement:
+        Create two sessions - one active, one completed.
+
+        Action:
+        Call _handle_get_active_sessions.
+
+        Assertion Strategy:
+        - Response is successful
+        - Only active session is returned
+        - Response includes session_id, name, type, start_time
+        """
+        # Create one active and one completed session
+        sessions = server.storage.load_sessions()
+        sessions["ses_active"] = {
+            "session_name": "Active Session",
+            "task_type": "testing",
+            "start_time": "2024-01-15T10:00:00",
+            "status": "active",
+        }
+        sessions["ses_completed"] = {
+            "session_name": "Completed Session",
+            "task_type": "debugging",
+            "start_time": "2024-01-15T09:00:00",
+            "status": "completed",
+        }
+        server.storage.save_sessions(sessions)
+
+        result = await server._handle_get_active_sessions({}, 1)
+
+        assert "result" in result
+        assert "active_sessions" in result["result"]
+        active = result["result"]["active_sessions"]
+        assert len(active) == 1
+        assert active[0]["session_id"] == "ses_active"
+        assert active[0]["session_name"] == "Active Session"
+        assert active[0]["task_type"] == "testing"
+
+    @pytest.mark.asyncio
+    async def test_returns_message_when_no_active_sessions(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies handler returns message when no active sessions exist.
+
+        Tests graceful handling when all sessions are completed.
+
+        Business context:
+        Clean state indication helps AI agents understand they
+        don't have a session to recover.
+
+        Arrangement:
+        Create only completed sessions.
+
+        Action:
+        Call _handle_get_active_sessions.
+
+        Assertion Strategy:
+        - Response is successful
+        - Message indicates no active sessions
+        """
+        sessions = server.storage.load_sessions()
+        sessions["ses_done"] = {"session_name": "Done", "status": "completed"}
+        server.storage.save_sessions(sessions)
+
+        result = await server._handle_get_active_sessions({}, 1)
+
+        assert "result" in result
+        assert "No active sessions found" in result["result"]["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_storage(self, server: SessionTrackerServer) -> None:
+        """Verifies handler works with no sessions in storage.
+
+        Tests boundary condition of completely empty storage.
+
+        Business context:
+        First-time users or clean storage should work gracefully.
+
+        Arrangement:
+        No sessions created (empty storage).
+
+        Action:
+        Call _handle_get_active_sessions.
+
+        Assertion Strategy:
+        - Response is successful
+        - Message indicates no active sessions
+        """
+        result = await server._handle_get_active_sessions({}, 1)
+
+        assert "result" in result
+        assert "No active sessions found" in result["result"]["content"][0]["text"]
+
+
 class TestResponseHelpers:
     """Tests for response helper methods."""
 
@@ -1658,3 +1811,481 @@ class TestResponseHelpers:
         assert "error" in result
         assert result["error"]["code"] == -32600
         assert result["error"]["message"] == "Invalid request"
+
+
+class TestCloseActiveSessions:
+    """Tests for _close_active_sessions method."""
+
+    @pytest.mark.asyncio
+    async def test_closes_active_sessions(self, server: SessionTrackerServer) -> None:
+        """Verifies active sessions are closed on server shutdown.
+
+        Tests that all sessions with status 'active' are marked as
+        completed with 'partial' outcome.
+
+        Business context:
+        Active sessions left open when server stops would have
+        incorrect metrics. Auto-closing ensures data integrity.
+
+        Arrangement:
+        Create two sessions: one active, one completed.
+
+        Action:
+        Call _close_active_sessions.
+
+        Assertion Strategy:
+        Validates active session is now completed with partial outcome.
+        """
+        sessions = server.storage.load_sessions()
+        sessions["active_session"] = {
+            "id": "active_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        sessions["completed_session"] = {
+            "id": "completed_session",
+            "status": "completed",
+        }
+        server.storage.save_sessions(sessions)
+
+        await server._close_active_sessions()
+
+        updated = server.storage.get_session("active_session")
+        assert updated["status"] == "completed"
+        assert updated["outcome"] == "partial"
+        assert "Auto-closed" in updated["notes"]
+        assert updated["end_time"] is not None
+
+    @pytest.mark.asyncio
+    async def test_close_active_sessions_no_active(self, server: SessionTrackerServer) -> None:
+        """Verifies no changes when no active sessions exist.
+
+        Tests that _close_active_sessions is safe to call when
+        there are no active sessions.
+
+        Business context:
+        Method may be called during normal shutdown with all
+        sessions already completed. Should be no-op.
+
+        Arrangement:
+        Create only completed sessions.
+
+        Action:
+        Call _close_active_sessions.
+
+        Assertion Strategy:
+        Validates completed sessions remain unchanged.
+        """
+        sessions = server.storage.load_sessions()
+        sessions["completed"] = {
+            "id": "completed",
+            "status": "completed",
+            "outcome": "success",
+        }
+        server.storage.save_sessions(sessions)
+
+        await server._close_active_sessions()
+
+        updated = server.storage.get_session("completed")
+        assert updated["status"] == "completed"
+        assert updated["outcome"] == "success"
+
+
+class TestLogInteractionExceptionHandling:
+    """Tests for exception handling in log_interaction."""
+
+    @pytest.fixture
+    def session_id(self, server: SessionTrackerServer) -> str:
+        """Create a session for testing."""
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "session_name": "Test",
+            "task_type": "code_generation",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        server.storage.save_sessions(sessions)
+        return "test_session"
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(
+        self, server: SessionTrackerServer, session_id: str
+    ) -> None:
+        """Verifies log_interaction handles unexpected exceptions.
+
+        Tests that the handler catches and returns proper error
+        response for unexpected errors during processing.
+
+        Business context:
+        Server must be resilient to unexpected failures. Proper
+        error responses allow clients to recover gracefully.
+
+        Arrangement:
+        Mock storage to raise exception during interaction add.
+
+        Action:
+        Call _handle_log_interaction with valid data.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch.object(
+            server.storage, "add_interaction", side_effect=Exception("Unexpected error")
+        ):
+            result = await server._handle_log_interaction(
+                {
+                    "session_id": session_id,
+                    "prompt": "test",
+                    "response_summary": "test",
+                    "effectiveness_rating": 4,
+                },
+                1,
+            )
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestEndSessionExceptionHandling:
+    """Tests for exception handling in end_session."""
+
+    @pytest.fixture
+    def session_id(self, server: SessionTrackerServer) -> str:
+        """Create a session for testing."""
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        server.storage.save_sessions(sessions)
+        return "test_session"
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(
+        self, server: SessionTrackerServer, session_id: str
+    ) -> None:
+        """Verifies end_session handles unexpected exceptions.
+
+        Tests that the handler catches and returns proper error
+        response for unexpected errors.
+
+        Business context:
+        Server must handle storage failures gracefully.
+
+        Arrangement:
+        Mock storage to raise exception during update.
+
+        Action:
+        Call _handle_end_session with valid data.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch.object(
+            server.storage, "update_session", side_effect=Exception("Unexpected error")
+        ):
+            result = await server._handle_end_session(
+                {"session_id": session_id, "outcome": "success"},
+                1,
+            )
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestFlagIssueExceptionHandling:
+    """Tests for exception handling in flag_issue."""
+
+    @pytest.fixture
+    def session_id(self, server: SessionTrackerServer) -> str:
+        """Create a session for testing."""
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        server.storage.save_sessions(sessions)
+        return "test_session"
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(
+        self, server: SessionTrackerServer, session_id: str
+    ) -> None:
+        """Verifies flag_issue handles unexpected exceptions.
+
+        Tests proper error response for unexpected errors.
+
+        Business context:
+        Issue flagging failures should not crash server.
+
+        Arrangement:
+        Mock storage to raise exception during add.
+
+        Action:
+        Call _handle_flag_issue with valid data.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch.object(server.storage, "add_issue", side_effect=Exception("Unexpected error")):
+            result = await server._handle_flag_issue(
+                {
+                    "session_id": session_id,
+                    "issue_type": "test",
+                    "description": "test",
+                    "severity": "low",
+                },
+                1,
+            )
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestGetObservabilityExceptionHandling:
+    """Tests for exception handling in get_observability."""
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(self, server: SessionTrackerServer) -> None:
+        """Verifies get_observability handles unexpected exceptions.
+
+        Tests proper error response for unexpected errors during
+        report generation.
+
+        Business context:
+        Analytics failures should return proper error, not crash.
+
+        Arrangement:
+        Mock storage to raise exception during load.
+
+        Action:
+        Call _handle_get_observability.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch.object(
+            server.storage, "load_sessions", side_effect=Exception("Unexpected error")
+        ):
+            result = await server._handle_get_observability({}, 1)
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestLogCodeMetricsExceptionHandling:
+    """Tests for additional exception handling in log_code_metrics."""
+
+    @pytest.fixture
+    def session_id(self, server: SessionTrackerServer) -> str:
+        """Create a session for testing."""
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        server.storage.save_sessions(sessions)
+        return "test_session"
+
+    @pytest.fixture
+    def python_file_with_syntax_error(self) -> str:
+        """Create a Python file with syntax error."""
+        import os
+
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, b"def broken(\n  invalid syntax here")
+        os.close(fd)
+        yield path
+        os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_handles_syntax_error(
+        self, server: SessionTrackerServer, session_id: str, python_file_with_syntax_error: str
+    ) -> None:
+        """Verifies code metrics handles Python syntax errors.
+
+        Tests that files with syntax errors produce appropriate
+        error response rather than crashing.
+
+        Business context:
+        AI may generate code with syntax errors. Metrics should
+        fail gracefully with clear error message.
+
+        Arrangement:
+        1. Create Python file with syntax error.
+        2. Session exists for association.
+
+        Action:
+        Call _handle_log_code_metrics with invalid file.
+
+        Assertion Strategy:
+        Validates error response mentions syntax error.
+        """
+        result = await server._handle_log_code_metrics(
+            {
+                "session_id": session_id,
+                "file_path": python_file_with_syntax_error,
+                "functions_modified": [],
+            },
+            1,
+        )
+
+        assert "error" in result
+        assert "syntax" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(
+        self, server: SessionTrackerServer, session_id: str
+    ) -> None:
+        """Verifies code metrics handles unexpected exceptions.
+
+        Tests proper error response for unexpected errors.
+
+        Business context:
+        Unexpected failures should not crash the server.
+
+        Arrangement:
+        Mock open() to raise exception.
+
+        Action:
+        Call _handle_log_code_metrics.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch("builtins.open", side_effect=Exception("Unexpected error")):
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": session_id,
+                    "file_path": "/some/file.py",
+                    "functions_modified": [],
+                },
+                1,
+            )
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestStartSessionExceptionHandling:
+    """Tests for exception handling in start_session."""
+
+    @pytest.mark.asyncio
+    async def test_handles_general_exception(self, server: SessionTrackerServer) -> None:
+        """Verifies start_session handles unexpected exceptions.
+
+        Tests proper error response for unexpected errors during
+        session creation.
+
+        Business context:
+        Session start failures should return proper error.
+
+        Arrangement:
+        Mock storage to raise exception during save.
+
+        Action:
+        Call _handle_start_session with valid data.
+
+        Assertion Strategy:
+        Validates error response with -32603 code.
+        """
+        from unittest.mock import patch
+
+        with patch.object(
+            server.storage, "save_sessions", side_effect=Exception("Unexpected error")
+        ):
+            result = await server._handle_start_session(
+                {
+                    "session_name": "Test",
+                    "task_type": "code_generation",
+                    "model_name": "test",
+                    "human_time_estimate_minutes": 30,
+                    "estimate_source": "manual",
+                },
+                1,
+            )
+
+            assert "error" in result
+            assert result["error"]["code"] == -32603
+
+
+class TestMissingParameterErrors:
+    """Tests for missing required parameters in tool handlers."""
+
+    @pytest.mark.asyncio
+    async def test_end_session_missing_session_id(self, server: SessionTrackerServer) -> None:
+        """Verifies end_session returns error for missing session_id.
+
+        Tests that the KeyError handler properly catches missing required
+        parameters and returns appropriate JSON-RPC error.
+
+        Business context:
+        Clear error messages help agents correct their tool calls.
+        """
+        result = await server._handle_end_session(
+            {"outcome": "success"},  # Missing session_id
+            1,
+        )
+
+        assert "error" in result
+        assert result["error"]["code"] == -32602
+        assert "session_id" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_flag_issue_missing_session_id(self, server: SessionTrackerServer) -> None:
+        """Verifies flag_issue returns error for missing session_id.
+
+        Tests that missing required parameters return proper error.
+        """
+        result = await server._handle_flag_issue(
+            {
+                "issue_type": "test",
+                "description": "test",
+                "severity": "low",
+            },  # Missing session_id
+            1,
+        )
+
+        assert "error" in result
+        assert result["error"]["code"] == -32602
+
+    @pytest.mark.asyncio
+    async def test_log_code_metrics_missing_file_path(self, server: SessionTrackerServer) -> None:
+        """Verifies log_code_metrics returns error for missing file_path.
+
+        Tests that missing required parameters return proper error.
+        """
+        # First create a session
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+        }
+        server.storage.save_sessions(sessions)
+
+        result = await server._handle_log_code_metrics(
+            {
+                "session_id": "test_session",
+                # Missing file_path
+                "functions_modified": [],
+            },
+            1,
+        )
+
+        assert "error" in result
+        assert result["error"]["code"] == -32602

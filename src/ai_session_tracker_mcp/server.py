@@ -122,6 +122,7 @@ class SessionTrackerServer:
             "flag_ai_issue": self._handle_flag_issue,
             "log_code_metrics": self._handle_log_code_metrics,
             "get_ai_observability": self._handle_get_observability,
+            "get_active_sessions": self._handle_get_active_sessions,
         }
 
         # Tool definitions for tools/list response
@@ -371,6 +372,18 @@ class SessionTrackerServer:
                             "default": "all",
                         },
                     },
+                    "required": [],
+                },
+            },
+            "get_active_sessions": {
+                "name": "get_active_sessions",
+                "description": (
+                    "Get list of currently active (not ended) sessions. "
+                    "Use this to find sessions to end when session_id is lost."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
                     "required": [],
                 },
             },
@@ -927,6 +940,72 @@ Session: {session_id}
         except Exception as e:
             logger.error(f"Error generating observability report: {e}")
             return self._error_response(msg_id, -32603, f"Failed to generate report: {e}")
+
+    async def _handle_get_active_sessions(
+        self, _args: dict[str, Any], msg_id: Any
+    ) -> dict[str, Any]:
+        """
+        Handle get_active_sessions tool to list sessions that haven't ended.
+
+        Returns a list of currently active sessions (status != 'completed')
+        with their IDs and names. Useful when session_id is lost due to
+        context summarization.
+
+        Business context: AI agents may lose track of their session_id
+        during long conversations. This tool enables recovery by listing
+        active sessions that can then be ended properly.
+
+        Args:
+            args: Tool arguments (currently none required).
+            msg_id: JSON-RPC message ID for response correlation.
+
+        Returns:
+            Success response with list of active sessions including:
+            - session_id: The ID needed for end_ai_session
+            - session_name: Human-readable name
+            - task_type: The type of task
+            - start_time: When the session started
+
+        Example:
+            >>> response = await server._handle_get_active_sessions({}, 1)
+            >>> # Response lists sessions that can be ended
+        """
+        try:
+            sessions = self.storage.load_sessions()
+            active_sessions = []
+
+            for session_id, session in sessions.items():
+                if session.get("status") != "completed":
+                    active_sessions.append(
+                        {
+                            "session_id": session_id,
+                            "session_name": session.get("session_name", "Unknown"),
+                            "task_type": session.get("task_type", "Unknown"),
+                            "start_time": session.get("start_time", "Unknown"),
+                        }
+                    )
+
+            if not active_sessions:
+                return self._success_response(msg_id, "No active sessions found.")
+
+            response_text = f"Found {len(active_sessions)} active session(s):\n\n"
+            for s in active_sessions:
+                response_text += (
+                    f"• **{s['session_name']}**\n"
+                    f"  - ID: `{s['session_id']}`\n"
+                    f"  - Type: {s['task_type']}\n"
+                    f"  - Started: {s['start_time']}\n\n"
+                )
+
+            return self._success_response(
+                msg_id,
+                response_text,
+                {"active_sessions": active_sessions},
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting active sessions: {e}")
+            return self._error_response(msg_id, -32603, f"Failed to get active sessions: {e}")
 
     # =========================================================================
     # RESPONSE HELPERS

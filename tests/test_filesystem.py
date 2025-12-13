@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
-from ai_session_tracker_mcp.filesystem import MockFileSystem, RealFileSystem
+# Add tests directory to path for conftest imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from ai_session_tracker_mcp.filesystem import RealFileSystem
+from conftest import MockFileSystem
 
 
 class TestMockFileSystemBasics:
@@ -862,3 +869,77 @@ class TestRealFileSystem:
         """
         fs = RealFileSystem()
         assert fs.is_file("/nonexistent_file_12345.txt") is False
+
+    def test_read_text_with_temp_file(self, tmp_path: object) -> None:
+        """Verifies read_text reads actual file content.
+
+        Tests that RealFileSystem can read text from a real file.
+
+        Business context:
+        Reading JSON session files is core functionality.
+        """
+        from pathlib import Path
+
+        p = Path(str(tmp_path)) / "test.txt"
+        p.write_text("Hello, World!")
+
+        fs = RealFileSystem()
+        content = fs.read_text(str(p))
+        assert content == "Hello, World!"
+
+    def test_write_text_creates_file(self, tmp_path: object) -> None:
+        """Verifies write_text creates and writes to actual file.
+
+        Tests that RealFileSystem can write text to a real file.
+
+        Business context:
+        Writing JSON session files is core functionality.
+        """
+        from pathlib import Path
+
+        p = Path(str(tmp_path)) / "test.txt"
+
+        fs = RealFileSystem()
+        fs.write_text(str(p), "Test content")
+
+        assert p.read_text() == "Test content"
+
+    def test_chmod_changes_permissions(self, tmp_path: object) -> None:
+        """Verifies chmod changes file permissions.
+
+        Tests that RealFileSystem can modify file permissions.
+
+        Business context:
+        Permission management for secure storage files.
+        """
+        import os
+        from pathlib import Path
+
+        p = Path(str(tmp_path)) / "test.txt"
+        p.write_text("test")
+
+        fs = RealFileSystem()
+        fs.chmod(str(p), 0o600)
+
+        # Verify permissions changed (on Unix-like systems)
+        mode = os.stat(str(p)).st_mode & 0o777
+        assert mode == 0o600
+
+    def test_remove_deletes_file(self, tmp_path: object) -> None:
+        """Verifies remove deletes actual file.
+
+        Tests that RealFileSystem can delete files.
+
+        Business context:
+        Cleaning up temporary or old session files.
+        """
+        from pathlib import Path
+
+        p = Path(str(tmp_path)) / "test.txt"
+        p.write_text("test")
+        assert p.exists()
+
+        fs = RealFileSystem()
+        fs.remove(str(p))
+
+        assert not p.exists()

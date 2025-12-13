@@ -23,13 +23,55 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import subprocess  # nosec B404
 import sys
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .filesystem import FileSystem
+    from .statistics import StatisticsEngine
+    from .storage import StorageManager
+
+# Constants
+SERVER_NAME = "ai-session-tracker"
+MODULE_NAME = "ai_session_tracker_mcp"
+VSCODE_DIR = ".vscode"
+GITHUB_DIR = ".github"
+CONFIG_FILE = "mcp.json"
+AGENT_FILES_DIR = "agent_files"
+AGENT_SUBDIRS = ("chatmodes", "instructions")
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
+SUBPROCESS_TIMEOUT = 5
+
+
+@lru_cache(maxsize=1)
+def _get_logger() -> logging.Logger:
+    """Get module logger (cached for thread safety)."""
+    logging.basicConfig(level=logging.INFO)
+    return logging.getLogger(__name__)
+
+
+def _log(message: str, *, emoji: str = "") -> None:
+    """Log message with optional emoji prefix for CLI output.
+
+    Args:
+        message: The message to log.
+        emoji: Optional emoji prefix for visual CLI feedback.
+    """
+    prefix = f"{emoji} " if emoji else ""
+    _get_logger().info(f"{prefix}{message}")
 
 
 def run_server(
     dashboard_host: str | None = None,
     dashboard_port: int | None = None,
+    *,
+    subprocess_factory: Callable[..., Any] | None = None,
 ) -> None:
     """
     Run the MCP server in stdio mode.
@@ -48,6 +90,8 @@ def run_server(
     Args:
         dashboard_host: If provided, start dashboard on this host.
         dashboard_port: If provided, start dashboard on this port.
+        subprocess_factory: Optional factory for creating subprocesses.
+            Defaults to subprocess.Popen. Used for testability.
 
     Returns:
         None. Blocks until server shutdown (EOF on stdin).
@@ -60,25 +104,27 @@ def run_server(
         >>> # ai-session-tracker server --dashboard-port 8000
         >>> run_server(dashboard_host="127.0.0.1", dashboard_port=8000)
     """
-    import subprocess  # nosec B404
-
+    popen = subprocess_factory or subprocess.Popen
     dashboard_process = None
+
+    # Import server main once at function start
+    from .server import main
+
+    # Validate dashboard configuration - both host and port required, or neither
+    if bool(dashboard_host) != bool(dashboard_port):
+        _log("Both --dashboard-host and --dashboard-port are required together", emoji="⚠️")
+        asyncio.run(main())
+        return
 
     # Start dashboard in background if configured
     if dashboard_host and dashboard_port:
-        import logging
+        _log(f"Starting dashboard at http://{dashboard_host}:{dashboard_port}")
 
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-        logger.info(f"Starting dashboard at http://{dashboard_host}:{dashboard_port}")
-
-        # Find the executable
-        executable = sys.executable
-        dashboard_process = subprocess.Popen(  # nosec B603
+        dashboard_process = popen(  # nosec B603
             [
-                executable,
+                sys.executable,
                 "-m",
-                "ai_session_tracker_mcp",
+                MODULE_NAME,
                 "dashboard",
                 "--host",
                 dashboard_host,
@@ -90,17 +136,20 @@ def run_server(
         )
 
     try:
-        from .server import main
-
         asyncio.run(main())
     finally:
         # Clean up dashboard process when server exits
         if dashboard_process:
             dashboard_process.terminate()
-            dashboard_process.wait(timeout=5)
+            try:
+                dashboard_process.wait(timeout=SUBPROCESS_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                _log("Dashboard process did not terminate gracefully, killing", emoji="⚠️")
+                dashboard_process.kill()
+                dashboard_process.wait()
 
 
-def run_dashboard(host: str = "127.0.0.1", port: int = 8000) -> None:
+def run_dashboard(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
     """
     Launch the web dashboard for visual analytics.
 
@@ -132,12 +181,15 @@ def run_dashboard(host: str = "127.0.0.1", port: int = 8000) -> None:
     """
     from .web import run_dashboard as start_web
 
-    print(f"🚀 Starting dashboard at http://{host}:{port}")
-    print("   Press Ctrl+C to stop")
+    _log(f"Starting dashboard at http://{host}:{port}", emoji="🚀")
+    _log("Press Ctrl+C to stop")
     start_web(host=host, port=port)
 
 
-def run_report() -> None:
+def run_report(
+    storage: StorageManager | None = None,
+    engine: StatisticsEngine | None = None,
+) -> None:
     """
     Print text analytics report to stdout.
 
@@ -148,6 +200,12 @@ def run_report() -> None:
     Business context: The text report provides a quick CLI-accessible
     summary for developers who want metrics without opening a browser.
     Can be redirected to files or used in scripts.
+
+    Args:
+        storage: Optional StorageManager for testability. Defaults to
+            new StorageManager instance.
+        engine: Optional StatisticsEngine for testability. Defaults to
+            new StatisticsEngine instance.
 
     Returns:
         None. Report is printed to stdout.
@@ -163,21 +221,120 @@ def run_report() -> None:
         AI SESSION TRACKER - ANALYTICS REPORT
         ...
     """
-    from .statistics import StatisticsEngine
-    from .storage import StorageManager
+    from .statistics import StatisticsEngine as StatsEngine
+    from .storage import StorageManager as StorageMgr
 
-    storage = StorageManager()
-    engine = StatisticsEngine()
+    storage = storage or StorageMgr()
+    engine = engine or StatsEngine()
 
     sessions = storage.load_sessions()
     interactions = storage.load_interactions()
     issues = storage.load_issues()
 
     report = engine.generate_summary_report(sessions, interactions, issues)
+    # Note: Using print() intentionally for stdout piping support
     print(report)
 
 
-def run_init() -> None:
+def _build_path(*parts: str) -> str:
+    """Build path from parts using forward slash separator.
+
+    Note: Uses forward slashes for virtual filesystem paths. These paths
+    are used with the FileSystem abstraction, not native OS paths.
+
+    Args:
+        *parts: Path components to join.
+
+    Returns:
+        Joined path string with forward slash separators.
+    """
+    return "/".join(parts)
+
+
+def _load_or_create_config(
+    fs: FileSystem,
+    config_path: str,
+) -> dict[str, Any]:
+    """Load existing MCP config or create empty one.
+
+    If the config file exists but contains invalid JSON, creates a backup
+    and returns an empty config.
+
+    Args:
+        fs: FileSystem instance for file operations.
+        config_path: Absolute path to mcp.json.
+
+    Returns:
+        Config dictionary with at least a 'servers' key.
+    """
+    if fs.exists(config_path):
+        try:
+            content = fs.read_text(config_path)
+            config: dict[str, Any] = json.loads(content)
+            _log(f"Found existing config: {config_path}", emoji="📄")
+        except json.JSONDecodeError:
+            _log(f"Invalid JSON in {config_path}, creating backup", emoji="⚠️")
+            backup_path = f"{config_path}.bak"
+            fs.rename(config_path, backup_path)
+            config = {}
+    else:
+        config = {}
+        _log(f"Creating new config: {config_path}", emoji="📄")
+
+    # Ensure servers section exists
+    if "servers" not in config:
+        config["servers"] = {}
+
+    return config
+
+
+def _copy_agent_files(
+    fs: FileSystem,
+    bundled_dir: str,
+    github_dir: str,
+    working_dir: str,
+) -> None:
+    """Copy bundled agent files to project's .github directory.
+
+    Copies chatmodes and instruction files from the package to the
+    user's project, skipping files that already exist.
+
+    Args:
+        fs: FileSystem instance for file operations.
+        bundled_dir: Path to bundled agent_files directory.
+        github_dir: Path to project's .github directory.
+        working_dir: Project root for relative path display.
+    """
+    if not fs.exists(bundled_dir):
+        return
+
+    for subdir in AGENT_SUBDIRS:
+        src_dir = _build_path(bundled_dir, subdir)
+        dst_dir = _build_path(github_dir, subdir)
+        if not fs.exists(src_dir):
+            continue
+
+        fs.makedirs(dst_dir, exist_ok=True)
+        for src_file in fs.iterdir(src_dir):
+            if not fs.is_file(src_file):
+                continue
+
+            filename = Path(src_file).name
+            dst_file = _build_path(dst_dir, filename)
+            rel_path = dst_file.replace(f"{working_dir}/", "")
+
+            if not fs.exists(dst_file):
+                fs.copy_file(src_file, dst_file)
+                _log(f"Created {rel_path}", emoji="📝")
+            else:
+                _log(f"{rel_path} exists", emoji="✓")
+
+
+def run_init(
+    filesystem: FileSystem | None = None,
+    cwd: str | None = None,
+    package_dir: str | None = None,
+) -> None:
     """
     Initialize AI Session Tracker for the current project.
 
@@ -194,6 +351,12 @@ def run_init() -> None:
     - .github/chatmodes/: Session tracking chat modes
     - .github/instructions/: AI instruction files
 
+    Args:
+        filesystem: Optional FileSystem for testability. Defaults to
+            RealFileSystem for production use.
+        cwd: Optional working directory. Defaults to current directory.
+        package_dir: Optional package directory for bundled files.
+
     Returns:
         None. Progress messages printed to stdout.
 
@@ -209,92 +372,61 @@ def run_init() -> None:
         ➕ Adding ai-session-tracker to MCP servers
         ✅ Successfully installed ai-session-tracker
     """
-    import shutil
+    from .filesystem import RealFileSystem
 
-    vscode_dir = Path.cwd() / ".vscode"
-    config_path = vscode_dir / "mcp.json"
-    server_name = "ai-session-tracker"
+    fs = filesystem or RealFileSystem()
+    working_dir = cwd or str(Path.cwd())
+    pkg_dir = package_dir or str(Path(__file__).parent)
 
-    # Find package directory for bundled files
-    package_dir = Path(__file__).parent
-    bundled_vscode = package_dir / "agent_files"
+    # Build paths using constants
+    vscode_dir = _build_path(working_dir, VSCODE_DIR)
+    config_path = _build_path(vscode_dir, CONFIG_FILE)
+    bundled_dir = _build_path(pkg_dir, AGENT_FILES_DIR)
+    github_dir = _build_path(working_dir, GITHUB_DIR)
 
-    # Find the executable path
-    executable = sys.executable
-    # Get the directory containing python, then find our script
-    bin_dir = Path(executable).parent
-    server_cmd = bin_dir / "ai-session-tracker"
+    # Find the executable path using injected filesystem
+    bin_dir = str(Path(sys.executable).parent)
+    server_cmd_path = _build_path(bin_dir, SERVER_NAME)
 
-    if not server_cmd.exists():
+    if not fs.exists(server_cmd_path):
         # Fallback to module invocation
         server_config = {
-            "command": str(executable),
-            "args": ["-m", "ai_session_tracker_mcp", "server"],
+            "command": sys.executable,
+            "args": ["-m", MODULE_NAME, "server"],
         }
     else:
         server_config = {
-            "command": str(server_cmd),
+            "command": server_cmd_path,
             "args": ["server"],
         }
 
-    # Load existing config or create new one
-    if config_path.exists():
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                config = json.load(f)
-            print(f"📄 Found existing config: {config_path}")
-        except json.JSONDecodeError:
-            print(f"⚠️  Invalid JSON in {config_path}, creating backup")
-            backup_path = config_path.with_suffix(".json.bak")
-            config_path.rename(backup_path)
-            config = {}
-    else:
-        config = {}
-        print(f"📄 Creating new config: {config_path}")
-
-    # Ensure servers section exists
-    if "servers" not in config:
-        config["servers"] = {}
+    # Load or create config
+    config = _load_or_create_config(fs, config_path)
 
     # Check if already installed
-    if server_name in config["servers"]:
-        existing = config["servers"][server_name]
+    if SERVER_NAME in config["servers"]:
+        existing = config["servers"][SERVER_NAME]
         if existing == server_config:
-            print(f"✅ {server_name} already installed and up to date")
+            _log(f"{SERVER_NAME} already installed and up to date", emoji="✅")
         else:
-            print(f"🔄 Updating {server_name} configuration")
-            config["servers"][server_name] = server_config
+            _log(f"Updating {SERVER_NAME} configuration", emoji="🔄")
+            config["servers"][SERVER_NAME] = server_config
     else:
-        print(f"➕ Adding {server_name} to MCP servers")
-        config["servers"][server_name] = server_config
+        _log(f"Adding {SERVER_NAME} to MCP servers", emoji="➕")
+        config["servers"][SERVER_NAME] = server_config
 
     # Create .vscode directory if needed
-    vscode_dir.mkdir(parents=True, exist_ok=True)
+    fs.makedirs(vscode_dir, exist_ok=True)
 
     # Write config
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
+    fs.write_text(config_path, json.dumps(config, indent=2))
 
-    # Copy chatmodes and instructions to .github/ (where VS Code looks for them)
-    github_dir = Path.cwd() / ".github"
-    if bundled_vscode.exists():
-        for subdir in ["chatmodes", "instructions"]:
-            src_dir = bundled_vscode / subdir
-            dst_dir = github_dir / subdir
-            if src_dir.exists():
-                dst_dir.mkdir(parents=True, exist_ok=True)
-                for src_file in src_dir.iterdir():
-                    if src_file.is_file():
-                        dst_file = dst_dir / src_file.name
-                        if not dst_file.exists():
-                            shutil.copy2(src_file, dst_file)
-                            print(f"📝 Created {dst_file.relative_to(Path.cwd())}")
-                        else:
-                            print(f"✓  {dst_file.relative_to(Path.cwd())} exists")
+    # Copy agent files to .github/
+    _copy_agent_files(fs, bundled_dir, github_dir, working_dir)
 
-    print(f"✅ Successfully installed {server_name}")
-    print(f"   Config: {config_path}")
-    print(f"   Command: {server_config['command']} {' '.join(server_config['args'])}")
+    _log(f"Successfully installed {SERVER_NAME}", emoji="✅")
+    _log(f"Config: {config_path}")
+    _log(f"Command: {server_config['command']} {' '.join(server_config['args'])}")
 
 
 def main() -> int:
@@ -327,9 +459,16 @@ def main() -> int:
         >>> # ai-session-tracker dashboard --port 8080
         >>> sys.exit(main())  # Typical usage pattern
     """
+    from .__version__ import __version__
+
     parser = argparse.ArgumentParser(
         prog="ai-session-tracker",
         description="AI Session Tracker MCP Server - Track AI coding sessions and ROI",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -358,14 +497,14 @@ def main() -> int:
     )
     dashboard_parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="Bind address (default: 127.0.0.1)",
+        default=DEFAULT_HOST,
+        help=f"Bind address (default: {DEFAULT_HOST})",
     )
     dashboard_parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port number (default: 8000)",
+        default=DEFAULT_PORT,
+        help=f"Port number (default: {DEFAULT_PORT})",
     )
 
     # Report command
@@ -400,5 +539,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())

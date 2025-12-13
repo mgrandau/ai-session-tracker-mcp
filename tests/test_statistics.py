@@ -1298,3 +1298,256 @@ class TestSummaryReport:
         result = engine.generate_summary_report(sessions, [], [])
 
         assert "$" in result
+
+
+class TestAnalyzeSessionGaps:
+    """Test suite for calculate_session_gaps method.
+
+    Categories:
+    1. Empty/Minimal Data - Handle no or single session
+    2. Gap Classification - Verify classification logic
+    3. Friction Indicators - Detect adoption issues
+    4. Edge Cases - Handle missing end times, overlapping sessions
+
+    Total: 9 tests covering session gap analysis.
+    """
+
+    def test_empty_sessions_returns_empty_gaps(self, engine: StatisticsEngine) -> None:
+        """Verifies empty sessions dict returns empty gap list.
+
+        Business context:
+        Empty data should produce valid empty result, not errors.
+        """
+        result = engine.calculate_session_gaps({})
+
+        assert result["gaps"] == []
+        assert result["summary"]["total_gaps"] == 0
+        assert result["friction_indicators"] == []
+
+    def test_single_session_no_gaps(self, engine: StatisticsEngine) -> None:
+        """Verifies single session produces no gaps.
+
+        Business context:
+        Need at least two sessions to have gaps between them.
+        """
+        start = datetime.now(UTC)
+        end = start + timedelta(hours=1)
+        sessions = {
+            "s1": {
+                "start_time": start.isoformat(),
+                "end_time": end.isoformat(),
+            }
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        assert result["gaps"] == []
+        assert result["summary"]["total_gaps"] == 0
+
+    @pytest.mark.parametrize(
+        "gap_minutes,expected_classification",
+        [
+            pytest.param(3, "quick", id="quick_under_5min"),
+            pytest.param(15, "normal", id="normal_5_to_30min"),
+            pytest.param(60, "extended", id="extended_30_to_120min"),
+            pytest.param(150, "long_break", id="long_break_over_120min"),
+        ],
+    )
+    def test_classifies_gaps(
+        self, engine: StatisticsEngine, gap_minutes: int, expected_classification: str
+    ) -> None:
+        """Verifies gaps are classified correctly based on duration.
+
+        Business context:
+        Gap classification helps identify adoption patterns:
+        - quick (<5min): Fast context switching, good adoption
+        - normal (5-30min): Healthy work patterns
+        - extended (30-120min): Meetings or other work
+        - long_break (>120min): May indicate tool friction
+
+        Testing Principle:
+        Parameterized test validates classification thresholds.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(minutes=30)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(minutes=30 + gap_minutes)).isoformat(),
+                "end_time": (base + timedelta(minutes=60 + gap_minutes)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        assert len(result["gaps"]) == 1
+        assert result["gaps"][0]["classification"] == expected_classification
+        assert result["summary"]["by_classification"][expected_classification] == 1
+
+    def test_detects_high_long_break_ratio_friction(self, engine: StatisticsEngine) -> None:
+        """Verifies friction indicator for high long-break ratio.
+
+        Business context:
+        If >30% of gaps are long breaks, may indicate tool friction.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(minutes=30)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(hours=3)).isoformat(),
+                "end_time": (base + timedelta(hours=4)).isoformat(),
+            },
+            "s3": {
+                "start_time": (base + timedelta(hours=7)).isoformat(),
+                "end_time": (base + timedelta(hours=8)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # 2 gaps, both are long breaks = 100% long break ratio
+        assert any("long-break ratio" in ind for ind in result["friction_indicators"])
+
+    def test_detects_high_average_gap_friction(self, engine: StatisticsEngine) -> None:
+        """Verifies friction indicator for high average gap.
+
+        Business context:
+        Average gap >60min suggests users may be avoiding the tool.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(minutes=30)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(hours=2)).isoformat(),
+                "end_time": (base + timedelta(hours=3)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        assert any("average gap" in ind for ind in result["friction_indicators"])
+
+    def test_skips_sessions_without_end_time(self, engine: StatisticsEngine) -> None:
+        """Verifies sessions without end_time are handled gracefully.
+
+        Business context:
+        Active sessions have no end_time yet. Should not break analysis.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                # No end_time
+            },
+            "s2": {
+                "start_time": (base + timedelta(hours=1)).isoformat(),
+                "end_time": (base + timedelta(hours=2)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # Should not raise, and handle gracefully
+        assert result["gaps"] == []
+
+    def test_skips_overlapping_sessions(self, engine: StatisticsEngine) -> None:
+        """Verifies overlapping sessions produce no negative gaps.
+
+        Business context:
+        Parallel sessions may overlap. Negative gaps should be ignored.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(hours=2)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(hours=1)).isoformat(),
+                "end_time": (base + timedelta(hours=3)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # Gap is negative (s2 starts before s1 ends), should be skipped
+        assert result["gaps"] == []
+
+    def test_detects_increasing_gap_trend_friction(self, engine: StatisticsEngine) -> None:
+        """Verifies friction indicator for gaps increasing over time.
+
+        Business context:
+        If second-half gaps are 1.5x first-half, adoption may be declining.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(minutes=30)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(minutes=35)).isoformat(),
+                "end_time": (base + timedelta(minutes=60)).isoformat(),
+            },
+            "s3": {
+                "start_time": (base + timedelta(minutes=65)).isoformat(),
+                "end_time": (base + timedelta(minutes=90)).isoformat(),
+            },
+            "s4": {
+                "start_time": (base + timedelta(hours=2)).isoformat(),
+                "end_time": (base + timedelta(hours=3)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # First half: two small gaps. Second half: one large gap (85 min)
+        assert any("increasing over time" in ind for ind in result["friction_indicators"])
+
+    def test_handles_invalid_timestamps(self, engine: StatisticsEngine) -> None:
+        """Verifies invalid timestamps are skipped gracefully.
+
+        Business context:
+        Corrupted data should not crash analysis.
+        """
+        sessions = {
+            "s1": {
+                "start_time": "invalid-timestamp",
+                "end_time": "also-invalid",
+            },
+            "s2": {
+                "start_time": datetime.now(UTC).isoformat(),
+                "end_time": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # Should not raise, invalid sessions skipped
+        assert result["gaps"] == []
+
+    def test_skips_sessions_missing_start_time(self, engine: StatisticsEngine) -> None:
+        """Verifies sessions without start_time are skipped gracefully.
+
+        Business context:
+        Malformed session records missing start_time should not break analysis.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            "s1": {
+                # Missing start_time entirely
+                "end_time": base.isoformat(),
+            },
+            "s2": {
+                "start_time": "",  # Empty start_time
+                "end_time": (base + timedelta(hours=1)).isoformat(),
+            },
+            "s3": {
+                "start_time": (base + timedelta(hours=2)).isoformat(),
+                "end_time": (base + timedelta(hours=3)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # Only s3 has valid start_time, so no gaps can be calculated
+        assert result["gaps"] == []
