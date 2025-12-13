@@ -4,9 +4,7 @@ __version__ = "0.1.0"
 __version_date__ = "2025-12-06"
 
 __title__ = "ai_session_tracker_mcp"
-__description__ = (
-    "MCP server for tracking AI coding sessions and measuring developer productivity"
-)
+__description__ = "MCP server for tracking AI coding sessions and measuring developer productivity"
 __url__ = "https://github.com/mgrandau/ai-session-tracker-mcp"
 
 __author__ = "Mark Grandau"

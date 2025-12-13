@@ -333,7 +333,7 @@ class SessionTrackerServer:
                         "issue_type": {
                             "type": "string",
                             "description": (
-                                "Issue category " "(e.g., 'incorrect_output', 'hallucination')"
+                                "Issue category (e.g., 'incorrect_output', 'hallucination')"
                             ),
                         },
                         "description": {
@@ -645,7 +645,7 @@ Session: {total} interactions, avg {avg_eff:.1f}/5
             avg_eff = session_data.get("avg_effectiveness", 0)
             response_text = f"""
 ✅ Session Ended: {session_id}
-Duration: {duration:.1f}min | Outcome: {args['outcome']}
+Duration: {duration:.1f}min | Outcome: {args["outcome"]}
 Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
 """
             return self._success_response(msg_id, response_text)
@@ -709,14 +709,13 @@ Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
             self.storage.add_issue(issue.to_dict())
 
             logger.info(
-                f"Flagged issue for session {session_id}: "
-                f"{args['issue_type']} ({args['severity']})"
+                f"Flagged issue for session {session_id}: {args['issue_type']} ({args['severity']})"
             )
 
             emoji = SEVERITY_EMOJI.get(args["severity"], "⚪")
 
             response_text = f"""
-{emoji} Issue Flagged: {args['issue_type']} ({args['severity'].upper()})
+{emoji} Issue Flagged: {args["issue_type"]} ({args["severity"].upper()})
 Session: {session_id}
 📋 Next: log_ai_interaction() or end_ai_session()
 """
