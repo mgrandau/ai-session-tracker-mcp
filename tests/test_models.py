@@ -110,7 +110,8 @@ class TestHelperFunctions:
     def test_generate_session_id_sanitization(
         self, input_name: str, expected_substring: str, forbidden_char: str | None
     ) -> None:
-        """Verifies session ID sanitizes input names correctly.
+        """
+        Verifies session ID sanitizes input names correctly.
 
         Tests that spaces become underscores, hyphens become underscores,
         and uppercase is converted to lowercase.
@@ -118,6 +119,18 @@ class TestHelperFunctions:
         Business context:
         IDs are used in filenames and URLs. Proper sanitization ensures
         filesystem safety and consistent word separation.
+
+        Arrangement:
+        1. input_name contains characters needing sanitization.
+        2. expected_substring is what the name should contain after.
+        3. forbidden_char is the character that should be removed.
+
+        Action:
+        Call _generate_session_id(input_name) to get sanitized result.
+
+        Assertion Strategy:
+        Validates expected_substring is present and forbidden_char is absent.
+        For lowercase tests, verifies no uppercase characters remain.
 
         Testing Principle:
         Parameterized test validates sanitization rules.
@@ -131,7 +144,8 @@ class TestHelperFunctions:
             assert not any(c.isupper() for c in result)
 
     def test_generate_session_id_truncates_long_names(self) -> None:
-        """Verifies session ID truncates names longer than 30 characters.
+        """
+        Verifies session ID truncates names longer than 30 characters.
 
         Tests that excessively long names are truncated to prevent
         unwieldy identifiers.
@@ -139,6 +153,19 @@ class TestHelperFunctions:
         Business context:
         Long IDs are hard to read and may cause display issues. 30
         character limit balances readability with uniqueness.
+
+        Arrangement:
+        Create a test name with 50 characters (exceeds 30 char limit).
+
+        Action:
+        Call _generate_session_id() with the oversized name.
+
+        Assertion Strategy:
+        Validates that the first part of the ID (before timestamp) is
+        at most 30 characters, confirming truncation.
+
+        Testing Principle:
+        Tests boundary condition for identifier length limits.
         """
         long_name = "a" * 50
         result = _generate_session_id(long_name)
@@ -263,7 +290,8 @@ class TestSession:
     def test_create_sets_field(
         self, session_kwargs: dict, attr_name: str, expected_value: object
     ) -> None:
-        """Verifies Session.create() correctly sets various fields.
+        """
+        Verifies Session.create() correctly sets various fields.
 
         Tests that each field provided to the factory method is stored
         correctly in the session object.
@@ -271,6 +299,18 @@ class TestSession:
         Business context:
         Session fields are used for display, filtering, and ROI calculations.
         All fields must be accurately stored.
+
+        Arrangement:
+        1. Prepare session_kwargs dict with field values from parametrize.
+        2. attr_name identifies which field to verify.
+        3. expected_value is the value that should be stored.
+
+        Action:
+        Call Session.create() with the kwargs and access the named attribute.
+
+        Assertion Strategy:
+        Validates that getattr(session, attr_name) equals expected_value,
+        confirming the factory correctly assigns each field.
 
         Testing Principle:
         Parameterized test validates field assignment from factory.
@@ -299,7 +339,8 @@ class TestSession:
         ],
     )
     def test_create_defaults(self, attr_name: str, expected_value: object) -> None:
-        """Verifies Session.create() sets sensible default values.
+        """
+        Verifies Session.create() sets sensible default values.
 
         Tests that optional fields default to appropriate values when
         not explicitly provided.
@@ -307,6 +348,17 @@ class TestSession:
         Business context:
         Default values enable creating sessions with minimal required
         fields. Empty/zero defaults prevent None handling issues.
+
+        Arrangement:
+        1. attr_name identifies which default field to verify.
+        2. expected_value is the expected default (empty string, 0, None, etc.).
+
+        Action:
+        Call Session.create() with only required fields, omitting optional ones.
+
+        Assertion Strategy:
+        Validates that getattr(session, attr_name) equals expected_value,
+        confirming default assignment.
 
         Testing Principle:
         Parameterized test validates default value assignment.

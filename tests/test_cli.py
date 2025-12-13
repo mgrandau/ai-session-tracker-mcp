@@ -550,7 +550,8 @@ class TestRunInstall:
     """Tests for run_install command."""
 
     def test_run_install_creates_mcp_json(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install creates .vscode/mcp.json with server config.
+        """
+        Verifies run_install creates .vscode/mcp.json with server config.
 
         Tests that the install command creates the configuration file
         in the expected location with proper structure.
@@ -560,13 +561,18 @@ class TestRunInstall:
         run_install automates the setup process.
 
         Arrangement:
-        Use MockFileSystem for isolated testing.
+        1. Use MockFileSystem for isolated testing.
+        2. No pre-existing config files.
 
         Action:
-        Call run_install function with mock filesystem.
+        Call run_install function with mock filesystem, cwd, and package_dir.
 
         Assertion Strategy:
-        Validates mcp.json exists and contains server configuration.
+        Validates mcp.json exists and contains server configuration with
+        the ai-session-tracker server entry.
+
+        Testing Principle:
+        Tests happy path for first-time installation.
         """
         import json
 
@@ -582,7 +588,8 @@ class TestRunInstall:
         assert "ai-session-tracker" in config["servers"]
 
     def test_run_install_updates_existing_config(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install updates existing mcp.json without losing data.
+        """
+        Verifies run_install updates existing mcp.json without losing data.
 
         Tests that run_install preserves existing server configs while
         adding the ai-session-tracker entry.
@@ -592,13 +599,18 @@ class TestRunInstall:
         should not overwrite their existing configuration.
 
         Arrangement:
-        Create existing mcp.json with other servers in mock filesystem.
+        1. Create .vscode directory in mock filesystem.
+        2. Create existing mcp.json with other-server config.
 
         Action:
-        Call run_install function.
+        Call run_install function to add ai-session-tracker.
 
         Assertion Strategy:
-        Validates both original and new servers exist in config.
+        Validates both original (other-server) and new (ai-session-tracker)
+        servers exist in the updated configuration.
+
+        Testing Principle:
+        Tests configuration merging preserves existing data.
         """
         import json
 
@@ -618,7 +630,8 @@ class TestRunInstall:
         assert "ai-session-tracker" in config["servers"]
 
     def test_run_install_handles_invalid_json(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install handles corrupt mcp.json gracefully.
+        """
+        Verifies run_install handles corrupt mcp.json gracefully.
 
         Tests that run_install creates backup of invalid JSON and
         proceeds with fresh configuration.
@@ -628,13 +641,18 @@ class TestRunInstall:
         recover gracefully rather than failing.
 
         Arrangement:
-        Create mcp.json with invalid JSON content in mock filesystem.
+        1. Create .vscode directory in mock filesystem.
+        2. Create mcp.json with invalid JSON content "{ invalid json }".
 
         Action:
-        Call run_install function.
+        Call run_install function which should detect invalid JSON.
 
         Assertion Strategy:
-        Validates backup created and new config is valid.
+        Validates backup file (.bak) was created and new config is valid JSON
+        with servers section.
+
+        Testing Principle:
+        Tests error recovery and data preservation on corrupt input.
         """
         import json
 

@@ -496,17 +496,34 @@ class StatisticsEngine:
         """
         Classify a gap duration into a category.
 
-        Uses module-level threshold constants for classification:
-        - quick: < GAP_THRESHOLD_QUICK (5 min)
-        - normal: < GAP_THRESHOLD_NORMAL (30 min)
-        - extended: < GAP_THRESHOLD_EXTENDED (120 min)
-        - long_break: >= GAP_THRESHOLD_EXTENDED
+        Uses module-level threshold constants for classification,
+        enabling consistent categorization across the application.
+
+        Business context: Gap classification enables pattern analysis.
+        Quick gaps indicate active engagement, while long breaks may
+        signal friction or context switches that impact productivity.
+
+        Classification thresholds:
+        - quick: < GAP_THRESHOLD_QUICK (5 min) - Minimal interruption
+        - normal: < GAP_THRESHOLD_NORMAL (30 min) - Expected breaks
+        - extended: < GAP_THRESHOLD_EXTENDED (120 min) - Significant pause
+        - long_break: >= GAP_THRESHOLD_EXTENDED - Potential friction
 
         Args:
-            gap_minutes: Gap duration in minutes.
+            gap_minutes: Gap duration in minutes. Non-negative float.
 
         Returns:
-            Classification string: 'quick', 'normal', 'extended', or 'long_break'.
+            str: Classification string: 'quick', 'normal', 'extended',
+                or 'long_break'.
+
+        Example:
+            >>> calc = StatisticsCalculator(storage)
+            >>> calc._classify_gap(3.0)
+            'quick'
+            >>> calc._classify_gap(45.0)
+            'normal'
+            >>> calc._classify_gap(180.0)
+            'long_break'
         """
         if gap_minutes < GAP_THRESHOLD_QUICK:
             return "quick"
@@ -527,19 +544,36 @@ class StatisticsEngine:
         """
         Detect friction patterns from gap analysis.
 
-        Analyzes gap statistics to identify potential workflow friction:
-        - High long-break ratio (> FRICTION_LONG_BREAK_RATIO)
-        - High average gap (> FRICTION_AVG_GAP_MINUTES)
-        - Increasing gap trend (second half > first half * FRICTION_TREND_MULTIPLIER)
+        Analyzes gap statistics to identify potential workflow friction
+        that may indicate tool usability issues or user disengagement.
+        Checks multiple indicators against configurable thresholds.
+
+        Business context: Friction detection is crucial for AI adoption
+        assessment. High friction correlates with reduced ROI and may
+        indicate need for tool improvements or additional user training.
 
         Args:
-            gaps: List of gap records with duration_minutes.
-            classification_counts: Count of gaps by classification.
-            total_gaps: Total number of gaps analyzed.
+            gaps: List of gap records, each containing 'duration_minutes'.
+            classification_counts: Count of gaps by classification type
+                (keys: 'quick', 'normal', 'extended', 'long_break').
+            total_gaps: Total number of gaps analyzed (must be > 0).
             avg_gap: Average gap duration in minutes.
 
         Returns:
-            List of friction indicator messages, empty if no issues detected.
+            list[str]: List of friction indicator messages describing
+                detected issues. Empty list if no friction patterns found.
+                Possible indicators:
+                - "High long-break ratio (X%) - potential tool friction"
+                - "High average gap (Xmin) - users may be avoiding tool"
+                - "Gaps increasing over time - possible adoption decline"
+
+        Example:
+            >>> calc = StatisticsCalculator(storage)
+            >>> gaps = [{"duration_minutes": 90}, {"duration_minutes": 120}]
+            >>> counts = {"long_break": 2, "quick": 0, "normal": 0, "extended": 0}
+            >>> indicators = calc._detect_friction_indicators(gaps, counts, 2, 105.0)
+            >>> len(indicators) > 0
+            True
         """
         friction_indicators: list[str] = []
 

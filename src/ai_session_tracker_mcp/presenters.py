@@ -58,11 +58,28 @@ def _format_duration(minutes: float) -> str:
     """
     Format duration as human-readable string.
 
+    Converts a duration in minutes to a compact, human-friendly format.
+    Durations under 60 minutes display as minutes, longer durations
+    display as decimal hours.
+
+    Business context: Consistent duration formatting across all UI
+    components (tables, panels, reports) provides a uniform user
+    experience and improves readability.
+
     Args:
-        minutes: Duration in minutes.
+        minutes: Duration in minutes. Negative values are displayed
+            as-is with the negative sign.
 
     Returns:
-        String like "45m" or "1.5h".
+        str: Formatted duration string:
+            - "45m" for durations under 60 minutes
+            - "1.5h" for durations 60 minutes or longer
+
+    Example:
+        >>> _format_duration(45)
+        '45m'
+        >>> _format_duration(90)
+        '1.5h'
     """
     if minutes < 60:
         return f"{minutes:.0f}m"
@@ -187,8 +204,15 @@ class SessionViewModel:
         Business context: Shows when the session started without
         cluttering the table with full datetime strings.
 
+        Args:
+            None (property accesses self.start_time).
+
         Returns:
-            String like "14:30:45" or "—" if no start time.
+            str: Time string like "14:30:45" or "—" if no start time
+                or if parsing fails.
+
+        Raises:
+            No exceptions raised. Returns "—" on any parsing error.
 
         Example:
             >>> session = SessionViewModel(..., start_time="2025-01-01T14:30:45+00:00", ...)
@@ -458,21 +482,59 @@ class SessionGapViewModel:
         """
         Format gap duration as human-readable string.
 
-        Converts duration_minutes to compact display. Under 60 minutes shows
-        as minutes, longer durations show as hours.
+        Converts duration_minutes to compact display format. Under 60 minutes
+        shows as minutes, longer durations show as decimal hours.
+
+        Business context: Human-readable durations enable quick visual scanning
+        of gap severity in session lists and reports, supporting rapid
+        identification of workflow disruptions.
+
+        Args:
+            None (property accesses self.duration_minutes)
 
         Returns:
-            String like "5m", "45m", "2.5h".
+            str: Formatted duration string:
+                - Minutes format: "5m", "45m" for gaps under 60 minutes
+                - Hours format: "1.5h", "2.5h" for gaps 60+ minutes
+
+        Example:
+            >>> gap = SessionGapViewModel(duration_minutes=45.0, ...)
+            >>> gap.duration_display
+            '45m'
         """
         return _format_duration(self.duration_minutes)
 
     @property
     def classification_emoji(self) -> str:
         """
-        Get emoji for gap classification.
+        Get emoji representation for gap classification.
+
+        Maps session gap classifications to visual emoji indicators for
+        quick pattern recognition in UI displays. Provides consistent
+        iconography across the application for gap severity levels.
+
+        Business context: Emojis enable rapid visual scanning of gap patterns
+        in session lists and timeline views, helping users identify workflow
+        interruptions at a glance.
+
+        Args:
+            None (property accesses self.classification).
 
         Returns:
-            Emoji indicating gap type: ⚡ quick, ✓ normal, ⏸ extended, 🔴 long.
+            str: Emoji character for the gap classification:
+                - "⚡" for quick gaps (< 5 minutes)
+                - "✓" for normal gaps (5-30 minutes)
+                - "⏸" for extended gaps (30-60 minutes)
+                - "🔴" for long breaks (> 60 minutes)
+                - "•" for unknown classifications
+
+        Raises:
+            No exceptions raised. Returns fallback for unknown values.
+
+        Example:
+            >>> gap = SessionGapViewModel(classification="quick", ...)
+            >>> gap.classification_emoji
+            '⚡'
         """
         return {
             "quick": "⚡",
@@ -484,10 +546,34 @@ class SessionGapViewModel:
     @property
     def classification_class(self) -> str:
         """
-        Get CSS class for gap classification styling.
+        Generate CSS class name for gap classification styling.
+
+        Transforms the gap classification into a valid CSS class name for
+        applying color-coded visual styles in the web dashboard. Converts
+        underscores to hyphens for CSS naming conventions.
+
+        Business context: CSS classes enable consistent color-coded gap
+        visualization across the dashboard, with severity colors defined
+        in the stylesheet (e.g., green for quick, yellow for normal,
+        orange for extended, red for long breaks).
+
+        Args:
+            None (property accesses self.classification).
 
         Returns:
-            CSS class name for color-coded display.
+            str: CSS class name in format "gap-{classification}":
+                - "gap-quick" for quick gaps
+                - "gap-normal" for normal gaps
+                - "gap-extended" for extended gaps
+                - "gap-long-break" for long break gaps
+
+        Raises:
+            No exceptions raised. Pure string transformation.
+
+        Example:
+            >>> gap = SessionGapViewModel(classification="long_break", ...)
+            >>> gap.classification_class
+            'gap-long-break'
         """
         return f"gap-{self.classification.replace('_', '-')}"
 
@@ -505,32 +591,103 @@ class SessionGapsViewModel:
     @property
     def average_display(self) -> str:
         """
-        Format average gap as human-readable string.
+        Format average gap duration as human-readable string.
+
+        Converts the average_gap_minutes float to a compact, human-friendly
+        duration string using standard time abbreviations. Automatically
+        selects appropriate units (minutes or hours) based on magnitude.
+
+        Business context: Provides a quick summary metric for gap analysis,
+        helping users understand typical interruption patterns in their
+        workflow at a glance.
+
+        Args:
+            None (property accesses self.average_gap_minutes).
 
         Returns:
-            String like "15m" or "1.5h".
+            str: Formatted duration string:
+                - Minutes format: "5m", "45m" for gaps under 60 minutes
+                - Hours format: "1.5h", "2.5h" for gaps 60+ minutes
+                - "0m" for zero or negative values
+
+        Raises:
+            No exceptions raised. Pure calculation.
+
+        Example:
+            >>> gaps = SessionGapsViewModel(average_gap_minutes=45.5)
+            >>> gaps.average_display
+            '45m'
+            >>> gaps = SessionGapsViewModel(average_gap_minutes=90.0)
+            >>> gaps.average_display
+            '1.5h'
         """
         return _format_duration(self.average_gap_minutes)
 
     @property
     def has_friction(self) -> bool:
         """
-        Check if any friction indicators were detected.
+        Check if any workflow friction indicators were detected.
+
+        Determines whether the session gaps analysis identified patterns
+        suggesting workflow problems, such as frequent context switches,
+        unusually long breaks, or erratic work patterns.
+
+        Business context: Friction detection helps users identify sessions
+        where external factors may have impacted productivity, enabling
+        better understanding of ROI metrics and workflow optimization
+        opportunities.
+
+        Args:
+            None (property accesses self.friction_indicators).
 
         Returns:
-            True if friction_indicators list is non-empty.
+            bool: True if one or more friction indicators were detected
+                in the gaps analysis, False otherwise.
+
+        Raises:
+            No exceptions raised. Pure boolean check.
+
+        Example:
+            >>> gaps = SessionGapsViewModel(friction_indicators=["High gap variance"])
+            >>> gaps.has_friction
+            True
+            >>> gaps = SessionGapsViewModel(friction_indicators=[])
+            >>> gaps.has_friction
+            False
         """
         return len(self.friction_indicators) > 0
 
     def classification_count(self, classification: str) -> int:
         """
-        Get count for a specific classification.
+        Get count for a specific gap classification type.
+
+        Retrieves the number of gaps matching the given classification
+        from the pre-computed classification breakdown dictionary.
+
+        Business context: Classification counts enable quick assessment of
+        gap distribution patterns, helping identify whether workflow issues
+        are dominated by specific gap types (e.g., many long breaks may
+        indicate tool friction).
 
         Args:
-            classification: One of 'quick', 'normal', 'extended', 'long_break'.
+            classification: Gap classification type. One of:
+                - 'quick': Gaps under 5 minutes
+                - 'normal': Gaps 5-30 minutes
+                - 'extended': Gaps 30-60 minutes
+                - 'long_break': Gaps over 60 minutes
 
         Returns:
-            Count of gaps with that classification.
+            int: Number of gaps with that classification. Returns 0 if
+                the classification is not found in the breakdown.
+
+        Example:
+            >>> gaps = SessionGapsViewModel(
+            ...     by_classification={'quick': 5, 'normal': 3, 'long_break': 1}
+            ... )
+            >>> gaps.classification_count('quick')
+            5
+            >>> gaps.classification_count('extended')
+            0
         """
         return self.by_classification.get(classification, 0)
 
@@ -723,15 +880,26 @@ class DashboardPresenter:
         Retrieve session gap analysis as a view model.
 
         Loads all sessions and calculates inter-session gaps to identify
-        workflow patterns and potential friction points.
+        workflow patterns and potential friction points. Analyzes the
+        time between session end and next session start.
 
         Business context: Gap analysis reveals user engagement patterns.
         Long gaps may indicate tool friction or workflow interruptions
-        that need investigation.
+        that need investigation to improve ROI.
+
+        Args:
+            None.
 
         Returns:
-            SessionGapsViewModel with gaps list, summary statistics,
-            and friction indicators.
+            SessionGapsViewModel: View model containing:
+                - gaps: List of individual gap view models
+                - total_gaps: Count of gaps analyzed
+                - average_gap_minutes: Mean gap duration
+                - by_classification: Count breakdown by type
+                - friction_indicators: Warning messages if issues detected
+
+        Raises:
+            No exceptions raised. Storage errors return empty results.
 
         Example:
             >>> presenter = DashboardPresenter(storage, stats)
@@ -748,11 +916,28 @@ class DashboardPresenter:
         """
         Group interactions by their session_id.
 
+        Creates a lookup dictionary for efficient access to interactions
+        belonging to each session. Used when calculating per-session
+        effectiveness averages.
+
+        Business context: Session-level effectiveness metrics require
+        aggregating interaction ratings. This grouping enables O(1)
+        lookup when building session view models.
+
         Args:
-            interactions: List of interaction records.
+            interactions: List of interaction records, each containing
+                a 'session_id' key.
 
         Returns:
-            Dict mapping session_id to list of interactions.
+            dict[str, list[dict[str, Any]]]: Dict mapping session_id to
+                list of interactions. Sessions with no interactions will
+                not have an entry.
+
+        Example:
+            >>> interactions = [{"session_id": "a", "rating": 5}, {"session_id": "a", "rating": 4}]
+            >>> grouped = presenter._group_interactions_by_session(interactions)
+            >>> len(grouped["a"])
+            2
         """
         grouped: dict[str, list[dict[str, Any]]] = {}
         for interaction in interactions:
@@ -769,11 +954,26 @@ class DashboardPresenter:
         """
         Calculate average effectiveness for a session's interactions.
 
+        Computes the arithmetic mean of effectiveness_rating values
+        across all interactions in a session.
+
+        Business context: Per-session effectiveness enables comparison
+        across tasks and time periods, helping identify which types
+        of work benefit most from AI assistance.
+
         Args:
             session_interactions: List of interactions for one session.
+                Each interaction should have an 'effectiveness_rating' key
+                with a numeric value (1-5).
 
         Returns:
-            Average effectiveness rating, or 0.0 if no interactions.
+            float: Average effectiveness rating (1.0-5.0), or 0.0 if
+                no interactions provided.
+
+        Example:
+            >>> interactions = [{"effectiveness_rating": 5}, {"effectiveness_rating": 3}]
+            >>> presenter._calculate_session_effectiveness(interactions)
+            4.0
         """
         if not session_interactions:
             return 0.0
@@ -1193,11 +1393,26 @@ class ChartPresenter:
         """
         Extract timeline data from a session.
 
+        Parses the session's start_time ISO string and calculates duration
+        for timeline chart rendering. Handles timezone-aware parsing.
+
+        Business context: Timeline charts show session distribution over
+        time. This parser extracts the essential data points for plotting.
+
         Args:
-            session: Raw session data dict.
+            session: Raw session data dict containing 'start_time',
+                'end_time', and 'status' keys.
 
         Returns:
-            Tuple of (datetime, duration_minutes, status) or None if invalid.
+            tuple[datetime, float, str] | None: Tuple of (start datetime,
+                duration in minutes, status string), or None if the
+                session has no valid start_time or parsing fails.
+
+        Example:
+            >>> session = {"start_time": "2025-01-01T10:00:00Z", "status": "completed"}
+            >>> result = presenter._parse_session_for_timeline(session)
+            >>> result[0].hour
+            10
         """
         from datetime import datetime
 
@@ -1216,11 +1431,26 @@ class ChartPresenter:
         """
         Map session status to chart color.
 
+        Provides consistent color coding for session statuses across
+        all charts and visualizations.
+
+        Business context: Color-coded statuses enable quick visual
+        identification of session outcomes in charts without reading
+        labels.
+
         Args:
-            status: Session status string.
+            status: Session status string. Expected values:
+                'active', 'completed', 'abandoned', 'partial'.
 
         Returns:
-            Hex color code from STATUS_COLORS.
+            str: Hex color code from STATUS_COLORS dict. Returns
+                default color for unknown statuses.
+
+        Example:
+            >>> presenter._status_to_color('completed')
+            '#22c55e'
+            >>> presenter._status_to_color('unknown')
+            '#94a3b8'
         """
         return STATUS_COLORS.get(status, STATUS_COLORS["default"])
 
@@ -1228,8 +1458,23 @@ class ChartPresenter:
         """
         Render placeholder chart when no sessions exist.
 
+        Creates a minimal matplotlib figure with a centered "No sessions yet"
+        message for display when the timeline chart has no data to show.
+
+        Business context: Empty state handling provides a better user
+        experience than showing a blank panel or error. Guides users
+        to create their first session.
+
+        Args:
+            None.
+
         Returns:
-            Matplotlib figure and axes.
+            tuple[Figure, Axes]: Matplotlib figure and axes ready for
+                rendering to PNG.
+
+        Example:
+            >>> fig, ax = presenter._render_empty_timeline()
+            >>> # Save to bytes buffer for HTTP response
         """
         import matplotlib.pyplot as plt
 

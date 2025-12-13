@@ -469,11 +469,18 @@ async def gaps_partial(
     Long gaps between sessions may indicate tool usability issues
     or user disengagement.
 
+    Args:
+        presenter: Dashboard presenter instance injected via FastAPI dependency.
+            Provides access to session gaps data and rendering logic.
+
     Returns:
         HTMLResponse containing gaps panel with:
         - Average gap duration display
         - Classification breakdown (quick/normal/extended/long)
         - Friction indicator warnings if detected
+
+    Raises:
+        HTTPException: If storage access fails (500 Internal Server Error).
 
     Example:
         >>> # htmx request from browser
@@ -494,8 +501,27 @@ async def roi_chart_partial() -> HTMLResponse:
     Returns HTML with an img tag pointing to the ROI chart PNG with a
     cache-busting timestamp parameter to ensure fresh chart on each refresh.
 
+    Business context: Dynamic chart updates via htmx enable real-time
+    dashboard interactivity. Cache-busting ensures users always see
+    current data without manual browser refresh.
+
+    Args:
+        None (no dependencies required for this static template).
+
     Returns:
-        HTMLResponse containing the chart panel HTML with cache-busted img src.
+        HTMLResponse containing the chart panel HTML with:
+        - Panel header with chart icon
+        - Chart container div with responsive styling
+        - Img tag with timestamped src for cache-busting
+
+    Raises:
+        No exceptions raised directly; chart generation errors are
+        handled by the /charts/roi.png endpoint.
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/roi-chart
+        >>> # Returns: <h2>📈 ROI Chart</h2><div>...<img src="/charts/roi.png?t=...">
     """
     import time
 
@@ -515,8 +541,27 @@ async def timeline_chart_partial() -> HTMLResponse:
     Returns HTML with an img tag pointing to the timeline chart PNG with a
     cache-busting timestamp parameter to ensure fresh chart on each refresh.
 
+    Business context: The timeline chart provides visual context for
+    session patterns over time. Htmx partial updates enable smooth
+    dashboard interactions without full page reloads.
+
+    Args:
+        None (no dependencies required for this static template).
+
     Returns:
-        HTMLResponse containing the chart panel HTML with cache-busted img src.
+        HTMLResponse containing the chart panel HTML with:
+        - Panel header with chart icon
+        - Chart container div with responsive styling
+        - Img tag with timestamped src for cache-busting
+
+    Raises:
+        No exceptions raised directly; chart generation errors are
+        handled by the /charts/timeline.png endpoint.
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/timeline-chart
+        >>> # Returns: <h2>📊 Session Timeline</h2><div>...<img src="...">
     """
     import time
 

@@ -346,6 +346,10 @@ class Config:
         Yields:
             None. Configuration is modified for the duration of the context.
 
+        Raises:
+            No exceptions are raised by this method. Any exceptions from code
+            within the context block are propagated after cleanup.
+
         Example:
             >>> with Config.override_for_test(s3_enabled=True, project_id='test'):
             ...     assert Config.is_s3_backup_enabled() is True

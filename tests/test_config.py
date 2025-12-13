@@ -26,11 +26,12 @@ class TestConfigConstants:
             pytest.param("WORKING_HOURS_PER_MONTH", 160.0, id="working_hours"),
             pytest.param("MCP_VERSION", "2024-11-05", id="mcp_version"),
             pytest.param("SERVER_NAME", "ai-session-tracker", id="server_name"),
-            pytest.param("SERVER_VERSION", "0.1.0", id="server_version"),
+            pytest.param("SERVER_VERSION", "1.0.0", id="server_version"),
         ],
     )
     def test_config_constant_value(self, attr_name: str, expected_value: object) -> None:
-        """Verifies Config constants have expected values.
+        """
+        Verifies Config constants have expected values.
 
         Tests that configuration constants match expected values for
         storage paths, file names, and business parameters.
@@ -38,6 +39,17 @@ class TestConfigConstants:
         Business context:
         Configuration constants are used throughout the codebase.
         Changing them would affect storage locations and ROI calculations.
+
+        Arrangement:
+        1. attr_name identifies which constant to verify from parametrize.
+        2. expected_value is the value the constant should have.
+
+        Action:
+        Access getattr(Config, attr_name) to retrieve constant value.
+
+        Assertion Strategy:
+        Validates the retrieved constant equals expected_value, confirming
+        configuration integrity.
 
         Testing Principle:
         Parameterized test validates all constant values efficiently.

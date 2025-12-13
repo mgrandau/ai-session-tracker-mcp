@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: ARG001
     Yields:
         None. Control returns to FastAPI to handle requests.
 
+    Returns:
+        AsyncGenerator[None]: Async context manager yielding None.
+
+    Raises:
+        No exceptions are raised directly by this function. Any startup
+        errors are logged before propagating.
+
     Example:
         >>> # Used automatically by create_app()
         >>> app = create_app()  # lifespan hooks registered

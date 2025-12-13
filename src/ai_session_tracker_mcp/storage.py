@@ -160,12 +160,26 @@ class StorageManager:
         """
         Filter a list of items by session_id.
 
+        Extracts records belonging to a specific session from a list of
+        items (typically interactions or issues).
+
+        Business context: Many queries need session-scoped data. This
+        helper enables efficient filtering when loading interactions or
+        issues for a specific session context.
+
         Args:
-            items: List of dicts containing 'session_id' key.
+            items: List of dicts, each containing a 'session_id' key.
             session_id: The session identifier to filter by.
 
         Returns:
-            Filtered list containing only items matching the session_id.
+            list[dict[str, Any]]: Filtered list containing only items
+                where item['session_id'] matches the provided session_id.
+                Returns empty list if no matches.
+
+        Example:
+            >>> items = [{"session_id": "a", "data": 1}, {"session_id": "b", "data": 2}]
+            >>> storage._filter_by_session(items, "a")
+            [{'session_id': 'a', 'data': 1}]
         """
         return [item for item in items if item.get("session_id") == session_id]
 

@@ -236,13 +236,25 @@ class TestSessionViewModel:
         ],
     )
     def test_status_class(self, status: str, expected_class: str) -> None:
-        """Verifies status_class returns correct CSS class for session status.
+        """
+        Verifies status_class returns correct CSS class for session status.
 
         Business context:
         Status classes enable color-coded status indicators in UI:
         - active: Blue/progress color (in-progress sessions)
         - completed: Green/success color (finished sessions)
         - abandoned: Red/warning color (incomplete work needing attention)
+
+        Arrangement:
+        1. status parameter from parametrize defines the session status.
+        2. expected_class is the CSS class that should be returned.
+
+        Action:
+        Create SessionViewModel with the status and access status_class property.
+
+        Assertion Strategy:
+        Validates status_class property returns the expected CSS class
+        for consistent UI styling.
 
         Testing Principle:
         Parameterized test validates status to CSS mapping.
@@ -417,7 +429,8 @@ class TestROIViewModel:
         ],
     )
     def test_roi_class(self, roi_percentage: float, expected_class: str) -> None:
-        """Verifies roi_class returns correct CSS class for ROI thresholds.
+        """
+        Verifies roi_class returns correct CSS class for ROI thresholds.
 
         Business context:
         ROI classification enables color-coded metrics:
@@ -425,6 +438,16 @@ class TestROIViewModel:
         - good (>=25%): Light green, positive returns
         - neutral (>=0%): Gray, break-even
         - negative (<0%): Red, loss on investment
+
+        Arrangement:
+        1. roi_percentage from parametrize defines the ROI value.
+        2. expected_class is the CSS class for that ROI level.
+
+        Action:
+        Create ROIViewModel with roi_percentage and access roi_class property.
+
+        Assertion Strategy:
+        Validates roi_class returns correct threshold-based CSS class.
 
         Testing Principle:
         Parameterized test validates threshold classification logic.
@@ -1063,7 +1086,16 @@ class TestChartPresenter:
         skipped rather than causing errors.
 
         Business context:
-        Corrupted data should not break chart rendering.
+            Corrupted data should not break chart rendering.
+
+        Arrangement:
+            Create sessions with invalid and valid timestamps.
+
+        Action:
+            Call render_sessions_timeline with mixed data.
+
+        Assertion Strategy:
+            Validates PNG bytes returned despite invalid sessions.
         """
         from datetime import datetime, timedelta
 
@@ -1094,9 +1126,27 @@ class TestSessionViewModelStartTimeDisplay:
     """Tests for SessionViewModel.start_time_display property."""
 
     def test_start_time_display_valid(self) -> None:
-        """Verifies start_time_display formats valid ISO timestamp.
+        """
+        Verifies start_time_display formats valid ISO timestamp.
 
-        Tests that valid ISO timestamps are converted to HH:MM:SS format.
+        Tests that valid ISO timestamps are converted to HH:MM:SS format
+        for compact display in session tables.
+
+        Business context:
+        Start time display enables quick identification of when sessions
+        occurred without cluttering the UI with full ISO strings.
+
+        Arrangement:
+        Create SessionViewModel with valid ISO 8601 timestamp with timezone.
+
+        Action:
+        Access start_time_display property to get formatted time.
+
+        Assertion Strategy:
+        Validates result is formatted as "HH:MM:SS" (14:30:45).
+
+        Testing Principle:
+        Tests happy path for timestamp formatting.
         """
         vm = SessionViewModel(
             session_id="x",
@@ -1111,9 +1161,27 @@ class TestSessionViewModelStartTimeDisplay:
         assert vm.start_time_display == "14:30:45"
 
     def test_start_time_display_empty(self) -> None:
-        """Verifies start_time_display handles empty string.
+        """
+        Verifies start_time_display handles empty string.
 
-        Tests that empty start_time returns em-dash placeholder.
+        Tests that empty start_time returns em-dash placeholder for
+        sessions without valid timestamps.
+
+        Business context:
+        Graceful handling of missing timestamps prevents UI errors
+        and shows consistent placeholder for incomplete data.
+
+        Arrangement:
+        Create SessionViewModel with empty string for start_time.
+
+        Action:
+        Access start_time_display property.
+
+        Assertion Strategy:
+        Validates result is em-dash ("—") placeholder.
+
+        Testing Principle:
+        Tests edge case for empty input.
         """
         vm = SessionViewModel(
             session_id="x",
@@ -1128,9 +1196,27 @@ class TestSessionViewModelStartTimeDisplay:
         assert vm.start_time_display == "—"
 
     def test_start_time_display_invalid(self) -> None:
-        """Verifies start_time_display handles invalid timestamp.
+        """
+        Verifies start_time_display handles invalid timestamp.
 
-        Tests that invalid timestamps return em-dash placeholder.
+        Tests that invalid/unparseable timestamps return em-dash placeholder
+        rather than raising exceptions.
+
+        Business context:
+        Corrupted data should not crash the UI. Graceful degradation
+        shows placeholder while logging the issue.
+
+        Arrangement:
+        Create SessionViewModel with invalid timestamp string.
+
+        Action:
+        Access start_time_display property.
+
+        Assertion Strategy:
+        Validates result is em-dash ("—") placeholder.
+
+        Testing Principle:
+        Tests error handling for malformed input.
         """
         vm = SessionViewModel(
             session_id="x",
@@ -1145,9 +1231,27 @@ class TestSessionViewModelStartTimeDisplay:
         assert vm.start_time_display == "—"
 
     def test_start_time_display_with_z_suffix(self) -> None:
-        """Verifies start_time_display handles Z timezone suffix.
+        """
+        Verifies start_time_display handles Z timezone suffix.
 
-        Tests that ISO timestamps with Z suffix are parsed correctly.
+        Tests that ISO timestamps with Z suffix (UTC indicator) are
+        parsed correctly and formatted to HH:MM:SS.
+
+        Business context:
+        Different systems may use Z or +00:00 for UTC. Both formats
+        must be handled for consistent display.
+
+        Arrangement:
+        Create SessionViewModel with ISO timestamp ending in Z.
+
+        Action:
+        Access start_time_display property.
+
+        Assertion Strategy:
+        Validates result is correctly formatted "14:30:45".
+
+        Testing Principle:
+        Tests timezone parsing edge case.
         """
         vm = SessionViewModel(
             session_id="x",
@@ -1166,7 +1270,28 @@ class TestSessionGapViewModel:
     """Tests for SessionGapViewModel properties."""
 
     def test_duration_display_minutes(self) -> None:
-        """Verifies duration_display shows minutes for gaps < 60min."""
+        """
+        Verifies duration_display shows minutes format for gaps under 60 minutes.
+
+        Tests that short gaps are displayed in compact minute format
+        for quick visual scanning in gap analysis panels.
+
+        Business context:
+        Duration formatting enables users to quickly assess gap severity.
+        Minute format is more intuitive for shorter durations.
+
+        Arrangement:
+        Create SessionGapViewModel with 45-minute duration.
+
+        Action:
+        Access duration_display property.
+
+        Assertion Strategy:
+        Validates result is "45m" format.
+
+        Testing Principle:
+        Tests formatting threshold for minute display.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1178,7 +1303,28 @@ class TestSessionGapViewModel:
         assert vm.duration_display == "45m"
 
     def test_duration_display_hours(self) -> None:
-        """Verifies duration_display shows hours for gaps >= 60min."""
+        """
+        Verifies duration_display shows hours format for gaps 60+ minutes.
+
+        Tests that longer gaps are displayed in decimal hour format
+        for easier comprehension of extended durations.
+
+        Business context:
+        Hour format is more readable for long gaps, helping identify
+        significant workflow interruptions.
+
+        Arrangement:
+        Create SessionGapViewModel with 120-minute duration.
+
+        Action:
+        Access duration_display property.
+
+        Assertion Strategy:
+        Validates result is "2.0h" format.
+
+        Testing Principle:
+        Tests formatting threshold for hour display.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1190,7 +1336,28 @@ class TestSessionGapViewModel:
         assert vm.duration_display == "2.0h"
 
     def test_classification_emoji_quick(self) -> None:
-        """Verifies classification_emoji for quick gaps."""
+        """
+        Verifies classification_emoji returns lightning bolt for quick gaps.
+
+        Tests that short gaps display the quick indicator emoji for
+        rapid visual identification in gap lists.
+
+        Business context:
+        Quick gaps indicate minimal workflow interruption, shown with
+        ⚡ to suggest speed/efficiency.
+
+        Arrangement:
+        Create SessionGapViewModel with classification="quick".
+
+        Action:
+        Access classification_emoji property.
+
+        Assertion Strategy:
+        Validates result is "⚡" emoji.
+
+        Testing Principle:
+        Tests emoji mapping for quick classification.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1202,7 +1369,28 @@ class TestSessionGapViewModel:
         assert vm.classification_emoji == "⚡"
 
     def test_classification_emoji_long_break(self) -> None:
-        """Verifies classification_emoji for long breaks."""
+        """
+        Verifies classification_emoji returns red circle for long breaks.
+
+        Tests that extended gaps display the warning indicator emoji
+        for flagging potential workflow issues.
+
+        Business context:
+        Long breaks may indicate tool friction or context switches,
+        shown with 🔴 to draw attention.
+
+        Arrangement:
+        Create SessionGapViewModel with classification="long_break".
+
+        Action:
+        Access classification_emoji property.
+
+        Assertion Strategy:
+        Validates result is "🔴" emoji.
+
+        Testing Principle:
+        Tests emoji mapping for long_break classification.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1214,7 +1402,28 @@ class TestSessionGapViewModel:
         assert vm.classification_emoji == "🔴"
 
     def test_classification_emoji_unknown(self) -> None:
-        """Verifies classification_emoji returns default for unknown types."""
+        """
+        Verifies classification_emoji returns default bullet for unknown types.
+
+        Tests graceful handling of unexpected classification values
+        by returning a neutral indicator.
+
+        Business context:
+        Defensive programming ensures UI doesn't break with unexpected
+        data. Bullet indicates "other" without implying severity.
+
+        Arrangement:
+        Create SessionGapViewModel with classification="unknown_type".
+
+        Action:
+        Access classification_emoji property.
+
+        Assertion Strategy:
+        Validates result is "•" (bullet) default.
+
+        Testing Principle:
+        Tests fallback behavior for unknown values.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1226,7 +1435,28 @@ class TestSessionGapViewModel:
         assert vm.classification_emoji == "•"
 
     def test_classification_class(self) -> None:
-        """Verifies classification_class returns proper CSS class."""
+        """
+        Verifies classification_class returns properly formatted CSS class.
+
+        Tests that CSS class names are generated with correct prefix
+        and underscore-to-hyphen conversion.
+
+        Business context:
+        CSS classes enable stylesheet-based styling. Hyphenated names
+        follow CSS naming conventions.
+
+        Arrangement:
+        Create SessionGapViewModel with classification="long_break".
+
+        Action:
+        Access classification_class property.
+
+        Assertion Strategy:
+        Validates result is "gap-long-break" (underscore converted).
+
+        Testing Principle:
+        Tests CSS class name generation logic.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapViewModel
 
         vm = SessionGapViewModel(
@@ -1242,7 +1472,28 @@ class TestSessionGapsViewModel:
     """Tests for SessionGapsViewModel properties and methods."""
 
     def test_average_display_minutes(self) -> None:
-        """Verifies average_display shows minutes for < 60min."""
+        """
+        Verifies average_display shows minutes format for averages under 60.
+
+        Tests that average gap duration formats correctly in minute format
+        for quick comprehension of typical gap size.
+
+        Business context:
+        Average gap helps assess workflow patterns. Minute format is
+        more intuitive for shorter average durations.
+
+        Arrangement:
+        Create SessionGapsViewModel with average_gap_minutes=30.0.
+
+        Action:
+        Access average_display property.
+
+        Assertion Strategy:
+        Validates result is "30m" format.
+
+        Testing Principle:
+        Tests formatting threshold for minute display.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1255,7 +1506,28 @@ class TestSessionGapsViewModel:
         assert vm.average_display == "30m"
 
     def test_average_display_hours(self) -> None:
-        """Verifies average_display shows hours for >= 60min."""
+        """
+        Verifies average_display shows hours format for averages 60+.
+
+        Tests that average gap duration formats correctly in hour format
+        for better readability of longer averages.
+
+        Business context:
+        Hour format is clearer for high average gaps, which may indicate
+        systemic workflow issues needing attention.
+
+        Arrangement:
+        Create SessionGapsViewModel with average_gap_minutes=90.0.
+
+        Action:
+        Access average_display property.
+
+        Assertion Strategy:
+        Validates result is "1.5h" format.
+
+        Testing Principle:
+        Tests formatting threshold for hour display.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1268,7 +1540,28 @@ class TestSessionGapsViewModel:
         assert vm.average_display == "1.5h"
 
     def test_has_friction_true(self) -> None:
-        """Verifies has_friction returns True when indicators exist."""
+        """
+        Verifies has_friction returns True when friction indicators exist.
+
+        Tests that the friction detection flag is set when the analysis
+        identifies workflow issues.
+
+        Business context:
+        Friction indicators help identify sessions with potential tool
+        usability problems. True value triggers warning display in UI.
+
+        Arrangement:
+        Create SessionGapsViewModel with non-empty friction_indicators list.
+
+        Action:
+        Access has_friction property.
+
+        Assertion Strategy:
+        Validates result is True.
+
+        Testing Principle:
+        Tests boolean flag for non-empty list.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1281,7 +1574,28 @@ class TestSessionGapsViewModel:
         assert vm.has_friction is True
 
     def test_has_friction_false(self) -> None:
-        """Verifies has_friction returns False when no indicators."""
+        """
+        Verifies has_friction returns False when no indicators present.
+
+        Tests that the friction flag is False when analysis finds
+        no workflow issues.
+
+        Business context:
+        False friction means healthy workflow patterns. UI can hide
+        warning section when no issues detected.
+
+        Arrangement:
+        Create SessionGapsViewModel with empty friction_indicators list.
+
+        Action:
+        Access has_friction property.
+
+        Assertion Strategy:
+        Validates result is False.
+
+        Testing Principle:
+        Tests boolean flag for empty list.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1294,7 +1608,29 @@ class TestSessionGapsViewModel:
         assert vm.has_friction is False
 
     def test_classification_count_existing(self) -> None:
-        """Verifies classification_count returns correct count for known type."""
+        """
+        Verifies classification_count returns correct count for known types.
+
+        Tests that the method correctly retrieves counts from the
+        by_classification dictionary for existing keys.
+
+        Business context:
+        Classification counts power the gap breakdown display, showing
+        distribution across quick/normal/extended/long_break categories.
+
+        Arrangement:
+        Create SessionGapsViewModel with by_classification containing
+        counts for quick, normal, and extended.
+
+        Action:
+        Call classification_count() for each type.
+
+        Assertion Strategy:
+        Validates each call returns the correct count from the dict.
+
+        Testing Principle:
+        Tests dictionary lookup for existing keys.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1309,7 +1645,29 @@ class TestSessionGapsViewModel:
         assert vm.classification_count("extended") == 2
 
     def test_classification_count_missing(self) -> None:
-        """Verifies classification_count returns 0 for unknown type."""
+        """
+        Verifies classification_count returns 0 for unknown or missing types.
+
+        Tests graceful handling of classification types not present in
+        the by_classification dictionary.
+
+        Business context:
+        Not all gap types may be present in a dataset. Returning 0
+        prevents KeyError and enables safe display logic.
+
+        Arrangement:
+        Create SessionGapsViewModel with by_classification containing
+        only "normal" (missing long_break and other types).
+
+        Action:
+        Call classification_count() for missing types.
+
+        Assertion Strategy:
+        Validates calls for missing keys return 0.
+
+        Testing Principle:
+        Tests dictionary lookup fallback for missing keys.
+        """
         from ai_session_tracker_mcp.presenters import SessionGapsViewModel
 
         vm = SessionGapsViewModel(
@@ -1327,7 +1685,28 @@ class TestFormatDuration:
     """Tests for _format_duration helper function."""
 
     def test_format_duration_minutes(self) -> None:
-        """Verifies _format_duration shows minutes for < 60."""
+        """
+        Verifies _format_duration shows minute format for values under 60.
+
+        Tests the formatting helper function with various minute values
+        to ensure consistent "Xm" output format.
+
+        Business context:
+        Duration formatting is used across all gap and session displays.
+        Consistent formatting improves readability.
+
+        Arrangement:
+        Import _format_duration helper function.
+
+        Action:
+        Call _format_duration with various minute values (0, 15, 45.5, 59).
+
+        Assertion Strategy:
+        Validates each call returns expected "Xm" format with rounding.
+
+        Testing Principle:
+        Tests boundary and typical values for minute threshold.
+        """
         from ai_session_tracker_mcp.presenters import _format_duration
 
         assert _format_duration(0) == "0m"
@@ -1336,7 +1715,28 @@ class TestFormatDuration:
         assert _format_duration(59) == "59m"
 
     def test_format_duration_hours(self) -> None:
-        """Verifies _format_duration shows hours for >= 60."""
+        """
+        Verifies _format_duration shows hour format for values 60+.
+
+        Tests the formatting helper function with various hour values
+        to ensure consistent "X.Yh" output format.
+
+        Business context:
+        Hour format is more readable for longer durations, matching
+        common time display conventions.
+
+        Arrangement:
+        Import _format_duration helper function.
+
+        Action:
+        Call _format_duration with various hour values (60, 90, 120, 150).
+
+        Assertion Strategy:
+        Validates each call returns expected "X.Yh" decimal format.
+
+        Testing Principle:
+        Tests values at and above the 60-minute threshold.
+        """
         from ai_session_tracker_mcp.presenters import _format_duration
 
         assert _format_duration(60) == "1.0h"
@@ -1349,7 +1749,20 @@ class TestStatusColors:
     """Tests for STATUS_COLORS constant."""
 
     def test_status_colors_contains_expected_keys(self) -> None:
-        """Verifies STATUS_COLORS has all expected status colors."""
+        """Verifies STATUS_COLORS has all expected status colors.
+
+        Arrangement:
+            Import STATUS_COLORS constant from presenters module.
+
+        Action:
+            Access STATUS_COLORS constant and check key presence.
+
+        Assertion Strategy:
+            Validates completed, active, default keys exist.
+
+        Testing Principle:
+            Constant validation - ensures required keys are defined.
+        """
         from ai_session_tracker_mcp.presenters import STATUS_COLORS
 
         assert "completed" in STATUS_COLORS
@@ -1357,7 +1770,20 @@ class TestStatusColors:
         assert "default" in STATUS_COLORS
 
     def test_status_colors_values_are_hex(self) -> None:
-        """Verifies STATUS_COLORS values are valid hex color codes."""
+        """Verifies STATUS_COLORS values are valid hex color codes.
+
+        Arrangement:
+            Import STATUS_COLORS constant from presenters module.
+
+        Action:
+            Iterate all STATUS_COLORS values and validate format.
+
+        Assertion Strategy:
+            Validates each color starts with # and has 7 chars.
+
+        Testing Principle:
+            Format validation - ensures CSS-compatible hex colors.
+        """
         from ai_session_tracker_mcp.presenters import STATUS_COLORS
 
         for color in STATUS_COLORS.values():
@@ -1369,14 +1795,40 @@ class TestEffectivenessColors:
     """Tests for EFFECTIVENESS_COLORS constant."""
 
     def test_effectiveness_colors_contains_ratings(self) -> None:
-        """Verifies EFFECTIVENESS_COLORS has all rating levels 1-5."""
+        """Verifies EFFECTIVENESS_COLORS has all rating levels 1-5.
+
+        Arrangement:
+            Import EFFECTIVENESS_COLORS constant from presenters module.
+
+        Action:
+            Check each rating level 1-5 exists as key.
+
+        Assertion Strategy:
+            Validates all five rating levels are present.
+
+        Testing Principle:
+            Constant validation - ensures complete rating coverage.
+        """
         from ai_session_tracker_mcp.presenters import EFFECTIVENESS_COLORS
 
         for rating in range(1, 6):
             assert rating in EFFECTIVENESS_COLORS
 
     def test_effectiveness_colors_values_are_hex(self) -> None:
-        """Verifies EFFECTIVENESS_COLORS values are valid hex color codes."""
+        """Verifies EFFECTIVENESS_COLORS values are valid hex color codes.
+
+        Arrangement:
+            Import EFFECTIVENESS_COLORS constant from presenters module.
+
+        Action:
+            Iterate all EFFECTIVENESS_COLORS values.
+
+        Assertion Strategy:
+            Validates # prefix and 7-character hex format.
+
+        Testing Principle:
+            Format validation - ensures CSS-compatible hex colors.
+        """
         from ai_session_tracker_mcp.presenters import EFFECTIVENESS_COLORS
 
         for color in EFFECTIVENESS_COLORS.values():
@@ -1388,7 +1840,20 @@ class TestChartPresenterHelpers:
     """Tests for ChartPresenter helper methods."""
 
     def test_status_to_color_completed(self) -> None:
-        """Verifies _status_to_color maps completed status."""
+        """Verifies _status_to_color maps completed status.
+
+        Arrangement:
+            Create ChartPresenter with mocked storage.
+
+        Action:
+            Call _status_to_color with "completed" status.
+
+        Assertion Strategy:
+            Validates return matches STATUS_COLORS["completed"].
+
+        Testing Principle:
+            Status mapping - verifies color lookup for known status.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1398,7 +1863,20 @@ class TestChartPresenterHelpers:
         assert presenter._status_to_color("completed") == STATUS_COLORS["completed"]
 
     def test_status_to_color_active(self) -> None:
-        """Verifies _status_to_color maps active status."""
+        """Verifies _status_to_color maps active status.
+
+        Arrangement:
+            Create ChartPresenter with mocked storage.
+
+        Action:
+            Call _status_to_color with "active" status.
+
+        Assertion Strategy:
+            Validates return matches STATUS_COLORS["active"].
+
+        Testing Principle:
+            Status mapping - verifies color lookup for known status.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1408,7 +1886,20 @@ class TestChartPresenterHelpers:
         assert presenter._status_to_color("active") == STATUS_COLORS["active"]
 
     def test_status_to_color_unknown(self) -> None:
-        """Verifies _status_to_color returns default for unknown status."""
+        """Verifies _status_to_color returns default for unknown status.
+
+        Arrangement:
+            Create ChartPresenter with mocked storage.
+
+        Action:
+            Call _status_to_color with unknown status values.
+
+        Assertion Strategy:
+            Validates fallback to STATUS_COLORS["default"].
+
+        Testing Principle:
+            Fallback behavior - verifies default handling for unknown.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1419,7 +1910,21 @@ class TestChartPresenterHelpers:
         assert presenter._status_to_color("abandoned") == STATUS_COLORS["default"]
 
     def test_parse_session_for_timeline_valid(self) -> None:
-        """Verifies _parse_session_for_timeline extracts valid data."""
+        """Verifies _parse_session_for_timeline extracts valid data.
+
+        Arrangement:
+            1. Create ChartPresenter with mocked dependencies.
+            2. Build session dict with valid start/end times (1 hour apart).
+
+        Action:
+            Call _parse_session_for_timeline with complete session.
+
+        Assertion Strategy:
+            Validates tuple with start_dt, duration (60 min), status.
+
+        Testing Principle:
+            Happy path - confirms correct parsing of well-formed timeline data.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1436,7 +1941,21 @@ class TestChartPresenterHelpers:
         assert duration == 60.0  # 1 hour
 
     def test_parse_session_for_timeline_no_start(self) -> None:
-        """Verifies _parse_session_for_timeline returns None without start_time."""
+        """Verifies _parse_session_for_timeline returns None without start_time.
+
+        Arrangement:
+            1. Create ChartPresenter with mocked dependencies.
+            2. Build session dict with only end_time (missing start_time).
+
+        Action:
+            Call _parse_session_for_timeline with missing start_time.
+
+        Assertion Strategy:
+            Validates None return for incomplete session data.
+
+        Testing Principle:
+            Missing field handling - ensures graceful degradation without required data.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1446,7 +1965,21 @@ class TestChartPresenterHelpers:
         assert result is None
 
     def test_parse_session_for_timeline_invalid_time(self) -> None:
-        """Verifies _parse_session_for_timeline returns None for invalid timestamp."""
+        """Verifies _parse_session_for_timeline returns None for invalid timestamp.
+
+        Arrangement:
+            1. Create ChartPresenter with mocked dependencies.
+            2. Build session dict with malformed start_time string.
+
+        Action:
+            Call _parse_session_for_timeline with unparseable timestamp.
+
+        Assertion Strategy:
+            Validates None return for malformed ISO timestamp.
+
+        Testing Principle:
+            Invalid input handling - verifies robust parsing of corrupted data.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = ChartPresenter(mock_storage, stats)
@@ -1463,7 +1996,20 @@ class TestDashboardPresenterHelpers:
     """Tests for DashboardPresenter helper methods."""
 
     def test_group_interactions_by_session_empty(self) -> None:
-        """Verifies _group_interactions_by_session handles empty list."""
+        """Verifies _group_interactions_by_session handles empty list.
+
+        Arrangement:
+            Create DashboardPresenter with mocked storage.
+
+        Action:
+            Call _group_interactions_by_session with empty list.
+
+        Assertion Strategy:
+            Validates empty dict return for no interactions.
+
+        Testing Principle:
+            Empty input handling - verifies graceful empty case.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = DashboardPresenter(mock_storage, stats)
@@ -1472,7 +2018,21 @@ class TestDashboardPresenterHelpers:
         assert result == {}
 
     def test_group_interactions_by_session_multiple(self) -> None:
-        """Verifies _group_interactions_by_session groups correctly."""
+        """Verifies _group_interactions_by_session groups correctly.
+
+        Arrangement:
+            1. Create DashboardPresenter with mocked dependencies.
+            2. Build interaction list with 2 for s1, 1 for s2.
+
+        Action:
+            Call _group_interactions_by_session with mixed sessions.
+
+        Assertion Strategy:
+            Validates s1 has 2, s2 has 1 interaction in dict.
+
+        Testing Principle:
+            Grouping logic - ensures interactions correctly partitioned by session.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = DashboardPresenter(mock_storage, stats)
@@ -1487,7 +2047,21 @@ class TestDashboardPresenterHelpers:
         assert len(result["s2"]) == 1
 
     def test_calculate_session_effectiveness_empty(self) -> None:
-        """Verifies _calculate_session_effectiveness returns 0 for empty list."""
+        """Verifies _calculate_session_effectiveness returns 0 for empty list.
+
+        Arrangement:
+            1. Create DashboardPresenter with mocked dependencies.
+            2. Prepare empty interaction list.
+
+        Action:
+            Call _calculate_session_effectiveness with empty list.
+
+        Assertion Strategy:
+            Validates 0.0 return for no interactions.
+
+        Testing Principle:
+            Empty input handling - prevents division by zero in average calculation.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = DashboardPresenter(mock_storage, stats)
@@ -1496,7 +2070,21 @@ class TestDashboardPresenterHelpers:
         assert result == 0.0
 
     def test_calculate_session_effectiveness_average(self) -> None:
-        """Verifies _calculate_session_effectiveness computes correct average."""
+        """Verifies _calculate_session_effectiveness computes correct average.
+
+        Arrangement:
+            1. Create DashboardPresenter with mocked dependencies.
+            2. Build interaction list with ratings 5, 4, 3 (sum=12, avg=4.0).
+
+        Action:
+            Call _calculate_session_effectiveness with ratings [5, 4, 3].
+
+        Assertion Strategy:
+            Validates average is 4.0 ((5+4+3)/3).
+
+        Testing Principle:
+            Arithmetic accuracy - confirms correct aggregation of effectiveness ratings.
+        """
         mock_storage = MagicMock(spec=StorageManager)
         stats = StatisticsEngine()
         presenter = DashboardPresenter(mock_storage, stats)

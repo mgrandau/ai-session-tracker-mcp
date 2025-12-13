@@ -39,8 +39,14 @@ class MockFileSystem:
         operations without actual disk I/O, making tests fast and
         deterministic.
 
+        Args:
+            None. Creates empty mock filesystem.
+
         Returns:
             None. Initializes internal state.
+
+        Raises:
+            No exceptions raised. Always succeeds.
 
         Example:
             >>> fs = MockFileSystem()
@@ -481,9 +487,14 @@ class MockFileSystem:
         Business context: Enables tests to verify which files were created
         by storage operations.
 
+        Args:
+            None. Returns all files in the mock filesystem.
+
         Returns:
             Sorted list of all file paths. Empty list if no files.
-            Never raises exceptions.
+
+        Raises:
+            No exceptions raised. Always returns a list.
 
         Example:
             >>> fs = MockFileSystem()
@@ -505,9 +516,14 @@ class MockFileSystem:
         Business context: Enables tests to verify which directories were
         created by storage operations.
 
+        Args:
+            None. Returns all directories in the mock filesystem.
+
         Returns:
             Sorted list of all directory paths. Empty list if none.
-            Never raises exceptions.
+
+        Raises:
+            No exceptions raised. Always returns a list.
 
         Example:
             >>> fs = MockFileSystem()
@@ -528,9 +544,14 @@ class MockFileSystem:
         Business context: Ensures test isolation by providing a clean
         slate for each test case. Call in test teardown or setup.
 
+        Args:
+            None. Clears all internal state.
+
         Returns:
             None. Clears all internal state as side effect.
-            Never raises exceptions.
+
+        Raises:
+            No exceptions raised. Always succeeds.
 
         Example:
             >>> fs = MockFileSystem()
@@ -547,12 +568,24 @@ class MockFileSystem:
 
 @pytest.fixture
 def mock_fs() -> MockFileSystem:
-    """Create a MockFileSystem for testing.
+    """
+    Create a MockFileSystem for testing.
 
     Provides a fresh in-memory filesystem instance for each test,
     ensuring test isolation without actual disk I/O.
 
+    Args:
+        None. Pytest fixture takes no arguments.
+
     Returns:
         MockFileSystem: A fresh mock filesystem instance.
+
+    Raises:
+        No exceptions raised. Always returns a new instance.
+
+    Example:
+        >>> def test_storage(mock_fs):
+        ...     mock_fs.set_file('/data/sessions.json', '{}')
+        ...     # Test operations using mock_fs
     """
     return MockFileSystem()

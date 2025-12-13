@@ -737,11 +737,26 @@ Session: {session_id}
         """
         Read and parse a Python file into an AST.
 
+        Reads the file content and parses it using Python's ast module.
+        Returns a tuple pattern for error handling without exceptions.
+
+        Business context: Code metrics require AST analysis. This method
+        provides safe file reading with clear error reporting for the
+        log_code_metrics tool.
+
         Args:
-            file_path: Path to the Python file.
+            file_path: Path to the Python file to parse.
 
         Returns:
-            Tuple of (AST, None) on success, or (None, error_message) on failure.
+            tuple[ast.Module, None] | tuple[None, str]: On success,
+                returns (parsed AST, None). On failure, returns
+                (None, error message describing the issue).
+
+        Example:
+            >>> tree, error = server._read_and_parse_python_file("/path/to/file.py")
+            >>> if error:
+            ...     print(f"Parse failed: {error}")
+            >>> # Use tree for analysis
         """
         try:
             code = self.filesystem.read_text(file_path)
@@ -758,12 +773,26 @@ Session: {session_id}
         """
         Find a function or async function definition by name in the AST.
 
+        Walks the entire AST tree to find a function matching the given
+        name. Supports both sync and async function definitions.
+
+        Business context: Code metrics need to locate specific functions
+        modified during a session. This enables targeted complexity and
+        documentation analysis.
+
         Args:
-            tree: Parsed AST module.
+            tree: Parsed AST module from ast.parse().
             func_name: Name of the function to find.
 
         Returns:
-            Function node if found, None otherwise.
+            ast.FunctionDef | ast.AsyncFunctionDef | None: The function
+                node if found, None otherwise.
+
+        Example:
+            >>> tree = ast.parse("def foo(): pass")
+            >>> node = server._find_function_in_ast(tree, "foo")
+            >>> node.name
+            'foo'
         """
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == func_name:
@@ -776,15 +805,29 @@ Session: {session_id}
         """
         Calculate cyclomatic complexity for a function AST node.
 
-        Complexity starts at 1 and increases for each branch/decision point:
-        - if, while, for, except, with, assert statements
-        - Boolean operators (and, or) add len(values) - 1
+        Complexity starts at 1 and increases for each branch/decision point.
+        Higher values indicate more complex control flow.
+
+        Business context: Complexity metrics help identify functions that
+        may need refactoring. High complexity correlates with maintenance
+        difficulty and bug risk.
+
+        Counted elements:
+        - if, while, for, except, with, assert statements (+1 each)
+        - Boolean operators (and, or): +1 per additional operand
 
         Args:
-            func_node: AST node for the function.
+            func_node: AST node for the function to analyze.
 
         Returns:
-            Cyclomatic complexity score (minimum 1).
+            int: Cyclomatic complexity score (minimum 1). Values 1-5 are
+                low, 6-10 moderate, 11+ high complexity.
+
+        Example:
+            >>> tree = ast.parse("def foo(x): return x if x else 0")
+            >>> func = tree.body[0]
+            >>> server._calculate_cyclomatic_complexity(func)
+            2
         """
         complexity = 1
         complexity_nodes = (
@@ -808,7 +851,14 @@ Session: {session_id}
         """
         Calculate documentation quality score for a function.
 
-        Scoring uses module-level constants:
+        Analyzes the function's docstring and type hints to produce a
+        quality score. Higher scores indicate better documentation.
+
+        Business context: Documentation quality is a key code health metric.
+        Well-documented functions are easier to maintain and onboard new
+        developers. Score thresholds: 0-30 poor, 31-60 basic, 61-100 good.
+
+        Scoring breakdown (module constants):
         - DOC_SCORE_HAS_DOCSTRING (30): Has any docstring
         - DOC_SCORE_MIN_LENGTH (10): Docstring > 50 chars
         - DOC_SCORE_HAS_ARGS (20): Contains Args/Parameters section
@@ -818,10 +868,16 @@ Session: {session_id}
         - DOC_SCORE_HAS_TYPE_HINTS (5): Has type annotations
 
         Args:
-            func_node: AST node for the function.
+            func_node: AST node for the function to analyze.
 
         Returns:
-            Tuple of (score 0-100, has_docstring, has_type_hints).
+            tuple[int, bool, bool]: Tuple of (score 0-100, has_docstring,
+                has_type_hints).
+
+        Example:
+            >>> code = 'def foo(x: int) -> int: \"\"\"Doc.\"\"\"'
+            >>> tree = ast.parse(code)
+            >>> score, has_doc, has_hints = server._calculate_documentation_score(tree.body[0])
         """
         docstring = ast.get_docstring(func_node)
         doc_score = 0
@@ -856,12 +912,29 @@ Session: {session_id}
         """
         Analyze a single function and return its metrics.
 
+        Locates the function in the AST and calculates complexity,
+        documentation score, and line change metrics.
+
+        Business context: Per-function metrics enable granular tracking
+        of AI contributions. Combined with line counts, this shows
+        exactly what was modified and the quality of those changes.
+
         Args:
-            tree: Parsed AST module.
-            func_info: Dict with 'name', 'modification_type', and optional line counts.
+            tree: Parsed AST module containing the function.
+            func_info: Dict with function details:
+                - 'name': Function name to find
+                - 'modification_type': 'added', 'modified', 'refactored', 'deleted'
+                - 'lines_added': Optional int of lines added
+                - 'lines_modified': Optional int of lines changed
+                - 'lines_deleted': Optional int of lines removed
 
         Returns:
-            FunctionMetrics if function found, None otherwise.
+            FunctionMetrics | None: Metrics dataclass if function found,
+                None if the function doesn't exist in the AST.
+
+        Example:
+            >>> func_info = {"name": "my_func", "modification_type": "added"}
+            >>> metrics = server._analyze_function(tree, func_info)
         """
         func_name = func_info["name"]
         func_node = self._find_function_in_ast(tree, func_name)
@@ -891,11 +964,26 @@ Session: {session_id}
         """
         Calculate summary statistics from function metrics.
 
+        Aggregates individual function metrics into session-level summaries
+        for complexity, documentation quality, and total effort.
+
+        Business context: Summary statistics enable session-level comparison
+        and trend analysis. Effort scores contribute to ROI calculations.
+
         Args:
-            function_metrics: List of function metric dicts.
+            function_metrics: List of function metric dicts, each containing:
+                - context.final_complexity: int
+                - documentation.quality_score: int
+                - value_metrics.effort_score: float
 
         Returns:
-            Tuple of (avg_complexity, avg_doc_score, total_effort).
+            tuple[float, float, float]: Tuple of (average_complexity,
+                average_documentation_score, total_effort_score).
+                Returns (0.0, 0.0, 0.0) if list is empty.
+
+        Example:
+            >>> metrics = [{"context": {"final_complexity": 5}, ...}]
+            >>> avg_cx, avg_doc, effort = server._calculate_metrics_summary(metrics)
         """
         if not function_metrics:
             return 0.0, 0.0, 0.0
@@ -1256,13 +1344,21 @@ Session: {session_id}
         returning an error response if not found. Reduces duplication
         across tool handlers that require an active session.
 
+        Business context: Most MCP tools require a valid session context.
+        This helper provides consistent error handling and reduces
+        boilerplate in tool handlers.
+
         Args:
-            session_id: Session identifier to look up.
-            msg_id: JSON-RPC message ID for error response.
+            session_id: Session identifier to look up in storage.
+            msg_id: JSON-RPC message ID for error response formatting.
 
         Returns:
-            Tuple of (session_data, None) if found, or
-            (None, error_response) if not found.
+            tuple[dict[str, Any], None] | tuple[None, dict[str, Any]]:
+                On success: (session_data dict, None)
+                On failure: (None, JSON-RPC error response dict)
+
+        Raises:
+            No exceptions raised. Returns error response tuple on failure.
 
         Example:
             >>> session_data, error = server._require_session("abc123", msg_id=1)
@@ -1435,8 +1531,15 @@ Session: {session_id}
         would show incorrect metrics (infinite duration). Auto-closing
         ensures data integrity and accurate tracking.
 
+        Args:
+            None.
+
         Returns:
             None. Sessions are updated in storage.
+
+        Raises:
+            Exception: Logs but does not propagate storage errors to allow
+                graceful shutdown to continue.
 
         Example:
             >>> await server._close_active_sessions()

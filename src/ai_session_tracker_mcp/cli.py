@@ -51,17 +51,57 @@ SUBPROCESS_TIMEOUT = 5
 
 @lru_cache(maxsize=1)
 def _get_logger() -> logging.Logger:
-    """Get module logger (cached for thread safety)."""
+    """
+    Get module logger with cached initialization for thread safety.
+
+    Creates and configures a logger for CLI operations on first call,
+    then returns the cached instance on subsequent calls. Uses lru_cache
+    to ensure thread-safe singleton behavior.
+
+    Business context: CLI commands need consistent logging throughout
+    their execution. Caching ensures handlers aren't duplicated and
+    log configuration remains stable.
+
+    Args:
+        None.
+
+    Returns:
+        logging.Logger: Configured logger instance for the cli module.
+
+    Example:
+        >>> logger = _get_logger()
+        >>> logger.info("Starting operation")
+    """
     logging.basicConfig(level=logging.INFO)
     return logging.getLogger(__name__)
 
 
 def _log(message: str, *, emoji: str = "") -> None:
-    """Log message with optional emoji prefix for CLI output.
+    """
+    Log message with optional emoji prefix for CLI output.
+
+    Wraps the module logger with emoji support for user-friendly CLI
+    feedback. Emojis provide visual status indicators (success, warning,
+    error) without requiring color terminal support.
+
+    Business context: The CLI setup command provides user feedback during
+    configuration. Emoji prefixes make status clear without relying on
+    terminal color support, ensuring accessibility.
 
     Args:
-        message: The message to log.
+        message: The message to log. Should be human-readable.
         emoji: Optional emoji prefix for visual CLI feedback.
+            Common values: "✅" success, "⚠️" warning, "❌" error.
+
+    Returns:
+        None. Message is written to log handlers.
+
+    Raises:
+        No exceptions raised. Logging errors are silently ignored.
+
+    Example:
+        >>> _log("Server started", emoji="✅")
+        >>> _log("Config missing", emoji="⚠️")
     """
     prefix = f"{emoji} " if emoji else ""
     _get_logger().info(f"{prefix}{message}")
@@ -237,16 +277,29 @@ def run_report(
 
 
 def _build_path(*parts: str) -> str:
-    """Build path from parts using forward slash separator.
+    """
+    Build path from parts using forward slash separator.
 
-    Note: Uses forward slashes for virtual filesystem paths. These paths
-    are used with the FileSystem abstraction, not native OS paths.
+    Joins path components with forward slashes for virtual filesystem
+    paths. These paths are used with the FileSystem abstraction layer,
+    not native OS paths, ensuring cross-platform consistency.
+
+    Business context: The CLI setup commands need to construct paths
+    for MCP config files and agent files that work across different
+    operating systems through the FileSystem abstraction.
 
     Args:
-        *parts: Path components to join.
+        *parts: Path components to join. Each component should be a
+            single directory or file name without separators.
 
     Returns:
-        Joined path string with forward slash separators.
+        str: Joined path string with forward slash separators.
+
+    Example:
+        >>> _build_path(".github", "instructions", "file.md")
+        '.github/instructions/file.md'
+        >>> _build_path("Users", "mark", ".vscode")
+        'Users/mark/.vscode'
     """
     return "/".join(parts)
 
@@ -255,17 +308,33 @@ def _load_or_create_config(
     fs: FileSystem,
     config_path: str,
 ) -> dict[str, Any]:
-    """Load existing MCP config or create empty one.
+    """
+    Load existing MCP config or create empty one.
 
-    If the config file exists but contains invalid JSON, creates a backup
-    and returns an empty config.
+    Reads the mcp.json configuration file if it exists. If the file
+    contains invalid JSON, creates a backup and returns an empty config.
+    Ensures the returned config always has a 'servers' key.
+
+    Business context: The setup command needs to modify existing MCP
+    configs without losing user customizations. Backup on corruption
+    prevents data loss while allowing recovery.
 
     Args:
         fs: FileSystem instance for file operations.
         config_path: Absolute path to mcp.json.
 
     Returns:
-        Config dictionary with at least a 'servers' key.
+        dict[str, Any]: Config dictionary with at least a 'servers' key.
+            Returns existing config if valid, or empty config with
+            servers dict if file doesn't exist or is invalid.
+
+    Raises:
+        OSError: If filesystem operations fail unexpectedly.
+
+    Example:
+        >>> fs = RealFileSystem()
+        >>> config = _load_or_create_config(fs, "/home/user/.vscode/mcp.json")
+        >>> config["servers"]["ai-session-tracker"] = {...}
     """
     if fs.exists(config_path):
         try:
@@ -294,16 +363,37 @@ def _copy_agent_files(
     github_dir: str,
     working_dir: str,
 ) -> None:
-    """Copy bundled agent files to project's .github directory.
+    """
+    Copy bundled agent files to project's .github directory.
 
-    Copies chatmodes and instruction files from the package to the
-    user's project, skipping files that already exist.
+    Copies chatmode definitions and instruction files from the installed
+    package to the user's project. Files that already exist are skipped
+    to preserve user customizations.
+
+    Business context: Agent files configure VS Code's AI assistant behavior
+    for session tracking. Installing them to .github ensures they're
+    version-controlled and shared with team members.
 
     Args:
         fs: FileSystem instance for file operations.
-        bundled_dir: Path to bundled agent_files directory.
-        github_dir: Path to project's .github directory.
-        working_dir: Project root for relative path display.
+        bundled_dir: Path to bundled agent_files directory in the package.
+        github_dir: Path to project's .github directory (destination).
+        working_dir: Project root for relative path display in logs.
+
+    Returns:
+        None. Files are copied to the destination directory.
+
+    Raises:
+        OSError: If file copy operations fail.
+
+    Example:
+        >>> fs = RealFileSystem()
+        >>> _copy_agent_files(
+        ...     fs,
+        ...     "/pkg/agent_files",
+        ...     "/project/.github",
+        ...     "/project"
+        ... )
     """
     if not fs.exists(bundled_dir):
         return

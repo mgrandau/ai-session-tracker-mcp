@@ -1081,8 +1081,17 @@ class TestReadJsonErrorHandling:
         are caught and handled gracefully.
 
         Business context:
-        Production may have intermittent I/O errors. Storage must
-        continue operating with defaults rather than crashing.
+            Production may have intermittent I/O errors. Storage must
+            continue operating with defaults rather than crashing.
+
+        Arrangement:
+            Create StorageManager and patch read_text to raise OSError.
+
+        Action:
+            Call load_sessions() which uses _read_json internally.
+
+        Assertion Strategy:
+            Validates empty dict default returned on OSError.
         """
         from unittest.mock import patch
 
@@ -1100,7 +1109,16 @@ class TestReadJsonErrorHandling:
         returning the default value.
 
         Business context:
-        File corruption can occur. Storage must not crash on bad data.
+            File corruption can occur. Storage must not crash on bad data.
+
+        Arrangement:
+            Create StorageManager and write invalid JSON to sessions file.
+
+        Action:
+            Call load_sessions() with corrupted file.
+
+        Assertion Strategy:
+            Validates empty dict default returned on JSON error.
         """
         storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
 
@@ -1121,8 +1139,17 @@ class TestEnsureFilesExistErrorHandling:
         file initialization fails.
 
         Business context:
-        Permission issues or disk full conditions during init should
-        be logged but not crash the entire application.
+            Permission issues or disk full conditions during init should
+            be logged but not crash the entire application.
+
+        Arrangement:
+            Patch makedirs to raise OSError simulating permission denied.
+
+        Action:
+            Create StorageManager which calls _ensure_files_exist.
+
+        Assertion Strategy:
+            Validates no exception raised and storage object created.
         """
         from unittest.mock import patch
 

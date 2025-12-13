@@ -515,14 +515,23 @@ class RealFileSystem:
         """
         Copy a file from src to dst.
 
-        Uses shutil.copy2 to preserve metadata.
+        Uses shutil.copy2 to preserve file metadata including modification
+        times and permissions.
+
+        Business context: Used by the setup command to copy agent files
+        from the installed package to user projects, preserving file
+        attributes for proper git tracking.
 
         Args:
             src: Absolute path to source file.
             dst: Absolute path to destination file.
 
+        Returns:
+            None. File is copied to destination.
+
         Raises:
             FileNotFoundError: If source file doesn't exist.
+            PermissionError: If destination cannot be written.
 
         Example:
             >>> fs = RealFileSystem()
@@ -532,14 +541,25 @@ class RealFileSystem:
 
     def rename(self, src: str, dst: str) -> None:  # pragma: no cover
         """
-        Rename/move a file on disk.
+        Rename or move a file on disk.
+
+        Performs an atomic rename operation when source and destination
+        are on the same filesystem.
+
+        Business context: Used by the setup command to create backup copies
+        of corrupted config files before replacing them, ensuring users
+        can recover their original configurations.
 
         Args:
             src: Absolute path to source file.
             dst: Absolute path to destination.
 
+        Returns:
+            None. File is renamed/moved to destination.
+
         Raises:
             FileNotFoundError: If source doesn't exist.
+            PermissionError: If operation not permitted.
 
         Example:
             >>> fs = RealFileSystem()

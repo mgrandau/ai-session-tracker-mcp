@@ -1316,7 +1316,19 @@ class TestAnalyzeSessionGaps:
         """Verifies empty sessions dict returns empty gap list.
 
         Business context:
-        Empty data should produce valid empty result, not errors.
+            Empty data should produce valid empty result, not errors.
+
+        Arrangement:
+            Engine fixture provides StatisticsEngine instance.
+
+        Action:
+            Call calculate_session_gaps with empty dict.
+
+        Assertion Strategy:
+            Validates empty gaps list, zero total_gaps, no friction.
+
+        Testing Principle:
+            Empty input handling - verifies graceful empty case.
         """
         result = engine.calculate_session_gaps({})
 
@@ -1328,7 +1340,19 @@ class TestAnalyzeSessionGaps:
         """Verifies single session produces no gaps.
 
         Business context:
-        Need at least two sessions to have gaps between them.
+            Need at least two sessions to have gaps between them.
+
+        Arrangement:
+            Create single session with start and end times.
+
+        Action:
+            Call calculate_session_gaps with single session.
+
+        Assertion Strategy:
+            Validates empty gaps list and zero total_gaps.
+
+        Testing Principle:
+            Boundary condition - verifies minimum input handling.
         """
         start = datetime.now(UTC)
         end = start + timedelta(hours=1)
@@ -1358,14 +1382,23 @@ class TestAnalyzeSessionGaps:
         """Verifies gaps are classified correctly based on duration.
 
         Business context:
-        Gap classification helps identify adoption patterns:
-        - quick (<5min): Fast context switching, good adoption
-        - normal (5-30min): Healthy work patterns
-        - extended (30-120min): Meetings or other work
-        - long_break (>120min): May indicate tool friction
+            Gap classification helps identify adoption patterns:
+            - quick (<5min): Fast context switching, good adoption
+            - normal (5-30min): Healthy work patterns
+            - extended (30-120min): Meetings or other work
+            - long_break (>120min): May indicate tool friction
+
+        Arrangement:
+            Create two sessions with parameterized gap duration between them.
+
+        Action:
+            Call calculate_session_gaps to classify the gap.
+
+        Assertion Strategy:
+            Validates gap classification matches expected threshold category.
 
         Testing Principle:
-        Parameterized test validates classification thresholds.
+            Parameterized test validates classification thresholds.
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1388,7 +1421,16 @@ class TestAnalyzeSessionGaps:
         """Verifies friction indicator for high long-break ratio.
 
         Business context:
-        If >30% of gaps are long breaks, may indicate tool friction.
+            If >30% of gaps are long breaks, may indicate tool friction.
+
+        Arrangement:
+            Create 3 sessions with 2 large gaps (100% long-break ratio).
+
+        Action:
+            Call calculate_session_gaps to analyze gap patterns.
+
+        Assertion Strategy:
+            Validates "long-break ratio" friction indicator present.
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1414,7 +1456,16 @@ class TestAnalyzeSessionGaps:
         """Verifies friction indicator for high average gap.
 
         Business context:
-        Average gap >60min suggests users may be avoiding the tool.
+            Average gap >60min suggests users may be avoiding the tool.
+
+        Arrangement:
+            Create 2 sessions with 90-minute gap between them.
+
+        Action:
+            Call calculate_session_gaps to analyze gap patterns.
+
+        Assertion Strategy:
+            Validates "average gap" friction indicator present.
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1435,7 +1486,16 @@ class TestAnalyzeSessionGaps:
         """Verifies sessions without end_time are handled gracefully.
 
         Business context:
-        Active sessions have no end_time yet. Should not break analysis.
+            Active sessions have no end_time yet. Should not break analysis.
+
+        Arrangement:
+            Create session without end_time (active) and one complete.
+
+        Action:
+            Call calculate_session_gaps with mixed completion states.
+
+        Assertion Strategy:
+            Validates no crash and empty gaps list.
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1457,7 +1517,16 @@ class TestAnalyzeSessionGaps:
         """Verifies overlapping sessions produce no negative gaps.
 
         Business context:
-        Parallel sessions may overlap. Negative gaps should be ignored.
+            Parallel sessions may overlap. Negative gaps should be ignored.
+
+        Arrangement:
+            Create 2 sessions where s2 starts before s1 ends.
+
+        Action:
+            Call calculate_session_gaps with overlapping sessions.
+
+        Assertion Strategy:
+            Validates negative gap is skipped (empty gaps list).
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1479,7 +1548,16 @@ class TestAnalyzeSessionGaps:
         """Verifies friction indicator for gaps increasing over time.
 
         Business context:
-        If second-half gaps are 1.5x first-half, adoption may be declining.
+            If second-half gaps are 1.5x first-half, adoption may be declining.
+
+        Arrangement:
+            Create 4 sessions with small gaps first, large gap second half.
+
+        Action:
+            Call calculate_session_gaps to detect trend.
+
+        Assertion Strategy:
+            Validates "increasing over time" friction indicator present.
         """
         base = datetime.now(UTC)
         sessions = {
@@ -1509,7 +1587,16 @@ class TestAnalyzeSessionGaps:
         """Verifies invalid timestamps are skipped gracefully.
 
         Business context:
-        Corrupted data should not crash analysis.
+            Corrupted data should not crash analysis.
+
+        Arrangement:
+            Create sessions with invalid and valid timestamps.
+
+        Action:
+            Call calculate_session_gaps with mixed validity.
+
+        Assertion Strategy:
+            Validates no crash and invalid sessions skipped.
         """
         sessions = {
             "s1": {
@@ -1530,7 +1617,16 @@ class TestAnalyzeSessionGaps:
         """Verifies sessions without start_time are skipped gracefully.
 
         Business context:
-        Malformed session records missing start_time should not break analysis.
+            Malformed session records missing start_time should not break analysis.
+
+        Arrangement:
+            Create sessions missing or with empty start_time.
+
+        Action:
+            Call calculate_session_gaps with incomplete data.
+
+        Assertion Strategy:
+            Validates no crash and gaps list is empty.
         """
         base = datetime.now(UTC)
         sessions = {

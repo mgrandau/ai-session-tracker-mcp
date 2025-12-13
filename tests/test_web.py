@@ -184,6 +184,26 @@ class TestWebAppCreation:
             import asyncio
 
             async def run_lifespan() -> None:
+                """Execute lifespan context manager for testing.
+
+                Inner async helper that runs the complete app lifespan cycle
+                (startup → running → shutdown) to verify logging behavior.
+
+                Args:
+                    None: Uses app from enclosing scope.
+
+                Returns:
+                    None: Side effect is lifespan execution.
+
+                Raises:
+                    None: Exceptions propagate from lifespan handler.
+
+                Example:
+                    >>> asyncio.run(run_lifespan())  # Runs full lifecycle
+
+                Note:
+                    Inner function pattern enables async context in sync test.
+                """
                 async with lifespan(app):
                     pass  # Simulate app running
 
@@ -734,8 +754,17 @@ class TestHtmxPartialRoutes:
         HTML that can be injected into the page.
 
         Business context:
-        htmx uses partials to update specific page sections without
-        full page reload. Must return valid HTML fragments.
+            htmx uses partials to update specific page sections without
+            full page reload. Must return valid HTML fragments.
+
+        Arrangement:
+            Mock presenter to return SessionGapsViewModel with test data.
+
+        Action:
+            GET /partials/gaps endpoint.
+
+        Assertion Strategy:
+            Validates 200 status and "Session Gaps" in response text.
         """
         with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
             from ai_session_tracker_mcp.presenters import SessionGapsViewModel
@@ -760,8 +789,17 @@ class TestHtmxPartialRoutes:
         as warning messages in the HTML response.
 
         Business context:
-        Friction indicators help identify adoption issues. They must
-        be visible to users in the dashboard.
+            Friction indicators help identify adoption issues. They must
+            be visible to users in the dashboard.
+
+        Arrangement:
+            Mock presenter to return SessionGapsViewModel with friction.
+
+        Action:
+            GET /partials/gaps with friction indicators in data.
+
+        Assertion Strategy:
+            Validates "long-break ratio" or "warning" appears in HTML.
         """
         from fastapi.testclient import TestClient as TC
 
@@ -794,8 +832,17 @@ class TestHtmxPartialRoutes:
         rendered in the HTML table.
 
         Business context:
-        Sessions table is the primary view of tracked work. Must
-        display session details correctly.
+            Sessions table is the primary view of tracked work. Must
+            display session details correctly.
+
+        Arrangement:
+            Mock presenter to return SessionViewModel with test session.
+
+        Action:
+            GET /partials/sessions with session data.
+
+        Assertion Strategy:
+            Validates session ID and "completed" appear in response.
         """
         from fastapi.testclient import TestClient as TC
 
@@ -832,8 +879,17 @@ class TestHtmxPartialRoutes:
         HTML that can be injected into the page.
 
         Business context:
-        htmx uses partials to update specific page sections without
-        full page reload. Must return valid HTML fragments.
+            htmx uses partials to update specific page sections without
+            full page reload. Must return valid HTML fragments.
+
+        Arrangement:
+            Mock presenter to return empty sessions list.
+
+        Action:
+            GET /partials/sessions endpoint.
+
+        Assertion Strategy:
+            Validates 200 status and table or "no sessions" in response.
         """
         with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
             mock_presenter = MagicMock()
@@ -851,7 +907,16 @@ class TestHtmxPartialRoutes:
         HTML with summary metrics.
 
         Business context:
-        ROI panel shows cost savings - critical business metric.
+            ROI panel shows cost savings - critical business metric.
+
+        Arrangement:
+            Mock presenter to return ROIViewModel with test metrics.
+
+        Action:
+            GET /partials/roi endpoint.
+
+        Assertion Strategy:
+            Validates 200 status and "ROI" in response text.
         """
         with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
             from ai_session_tracker_mcp.presenters import ROIViewModel
@@ -881,7 +946,16 @@ class TestHtmxPartialRoutes:
         HTML with rating distribution.
 
         Business context:
-        Effectiveness distribution shows AI quality metrics.
+            Effectiveness distribution shows AI quality metrics.
+
+        Arrangement:
+            Mock presenter to return EffectivenessViewModel.
+
+        Action:
+            GET /partials/effectiveness endpoint.
+
+        Assertion Strategy:
+            Validates 200 status and "Effectiveness" in response text.
         """
         with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
             from ai_session_tracker_mcp.presenters import EffectivenessViewModel
@@ -905,8 +979,20 @@ class TestHtmxPartialRoutes:
         prevent browser caching of stale chart images.
 
         Business context:
-        Charts must refresh with current data. Cache-busting ensures
-        users see latest metrics, not cached old charts.
+            Charts must refresh with current data. Cache-busting ensures
+            users see latest metrics, not cached old charts.
+
+        Arrangement:
+            Client fixture provides TestClient for HTTP requests.
+
+        Action:
+            GET /partials/roi-chart endpoint.
+
+        Assertion Strategy:
+            Validates "ROI Chart" and "roi.png?t=" timestamp in response.
+
+        Testing Principle:
+            Cache invalidation - verifies timestamp prevents stale data.
         """
         response = client.get("/partials/roi-chart")
         assert response.status_code == 200
@@ -917,6 +1003,18 @@ class TestHtmxPartialRoutes:
         """Verifies timeline chart partial includes cache-busting timestamp.
 
         Tests that the img src includes a timestamp parameter.
+
+        Arrangement:
+            Client fixture provides TestClient for HTTP requests.
+
+        Action:
+            GET /partials/timeline-chart endpoint.
+
+        Assertion Strategy:
+            Validates "Timeline" and "timeline.png?t=" in response.
+
+        Testing Principle:
+            Cache invalidation - verifies timestamp prevents stale data.
         """
         response = client.get("/partials/timeline-chart")
         assert response.status_code == 200
@@ -934,8 +1032,17 @@ class TestChartFallbacks:
         returning an informative SVG placeholder instead.
 
         Business context:
-        matplotlib is optional. Dashboard should work without it,
-        showing placeholder instead of broken images.
+            matplotlib is optional. Dashboard should work without it,
+            showing placeholder instead of broken images.
+
+        Arrangement:
+            Mock chart presenter to raise ImportError on render.
+
+        Action:
+            GET /charts/effectiveness.png without matplotlib.
+
+        Assertion Strategy:
+            Validates SVG content-type and "Effectiveness Chart" text.
         """
         from fastapi.testclient import TestClient as TC
 
@@ -954,7 +1061,21 @@ class TestChartFallbacks:
             assert b"Effectiveness Chart" in response.content
 
     def test_roi_chart_fallback(self) -> None:
-        """Verifies ROI chart returns SVG placeholder when matplotlib unavailable."""
+        """Verifies ROI chart returns SVG placeholder when matplotlib unavailable.
+
+        Arrangement:
+            1. Create FastAPI app with dependency injection.
+            2. Override chart presenter to raise ImportError on render.
+
+        Action:
+            GET /charts/roi.png without matplotlib available.
+
+        Assertion Strategy:
+            Validates SVG content-type and "ROI Chart" text.
+
+        Testing Principle:
+            Graceful degradation - ensures charts display placeholder when libs missing.
+        """
         from fastapi.testclient import TestClient as TC
 
         from ai_session_tracker_mcp.web import create_app
@@ -972,7 +1093,21 @@ class TestChartFallbacks:
             assert b"ROI Chart" in response.content
 
     def test_timeline_chart_fallback(self) -> None:
-        """Verifies timeline chart returns SVG placeholder when matplotlib unavailable."""
+        """Verifies timeline chart returns SVG placeholder when matplotlib unavailable.
+
+        Arrangement:
+            1. Create FastAPI app with dependency injection.
+            2. Override chart presenter to raise ImportError on timeline render.
+
+        Action:
+            GET /charts/timeline.png without matplotlib available.
+
+        Assertion Strategy:
+            Validates SVG content-type and "Timeline Chart" text.
+
+        Testing Principle:
+            Graceful degradation - ensures timeline displays placeholder when libs missing.
+        """
         from fastapi.testclient import TestClient as TC
 
         from ai_session_tracker_mcp.web import create_app
@@ -1000,8 +1135,21 @@ class TestAppMainBlock:
         dashboard server with default settings.
 
         Business context:
-        Users may run `python -m ai_session_tracker_mcp.web.app`
-        directly. Should start dashboard on default host/port.
+            Users may run `python -m ai_session_tracker_mcp.web.app`
+            directly. Should start dashboard on default host/port.
+
+        Arrangement:
+            1. Patch run_dashboard to prevent actual server startup.
+            2. Access module to verify callable structure.
+
+        Action:
+            Verify run_dashboard function exists and is callable.
+
+        Assertion Strategy:
+            Validates callable check passes.
+
+        Testing Principle:
+            Module entrypoint - ensures direct script execution is functional.
         """
         with patch("ai_session_tracker_mcp.web.app.run_dashboard"):
             # Execute the module's __main__ guard

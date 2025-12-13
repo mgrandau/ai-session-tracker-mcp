@@ -1296,8 +1296,17 @@ def complex_function(x: int, y: int) -> int:
         sections in addition to Args and Returns.
 
         Business context:
-        Comprehensive documentation including examples and error handling
-        documentation indicates high-quality AI output.
+            Comprehensive documentation including examples and error handling
+            documentation indicates high-quality AI output.
+
+        Arrangement:
+            Create temporary Python file with fully documented function.
+
+        Action:
+            Call _handle_log_code_metrics with the complete docstring file.
+
+        Assertion Strategy:
+            Validates average_doc_quality >= 90 (max points for all sections).
         """
         import os
 
@@ -1896,7 +1905,30 @@ class TestLogInteractionExceptionHandling:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session for testing."""
+        """Provide active session for log_interaction exception tests.
+
+        Creates a minimal active session with task_type and session_name
+        to satisfy log_interaction requirements before exception injection.
+
+        Args:
+            server: Server fixture with storage backend.
+
+        Returns:
+            Session ID string "test_session" for use in test assertions.
+
+        Raises:
+            None: Fixture creates session without validation.
+
+        Example:
+            >>> session_id = "test_session"
+            >>> result = await server._handle_log_interaction({...}, 1)
+
+        Business context:
+            Tests require pre-existing session to exercise exception paths.
+
+        Testing Principle:
+            Fixture isolation - each test gets fresh session state.
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -1954,7 +1986,30 @@ class TestEndSessionExceptionHandling:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session for testing."""
+        """Provide active session for end_session exception tests.
+
+        Creates minimal active session state required for end_session
+        handler to process before exception injection.
+
+        Args:
+            server: Server fixture with storage backend.
+
+        Returns:
+            Session ID string "test_session" for termination tests.
+
+        Raises:
+            None: Fixture creates session without validation.
+
+        Example:
+            >>> session_id = "test_session"
+            >>> result = await server._handle_end_session({...}, 1)
+
+        Business context:
+            Tests require pre-existing session to exercise exception paths.
+
+        Testing Principle:
+            Fixture isolation - each test gets independent session.
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -2004,7 +2059,30 @@ class TestFlagIssueExceptionHandling:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session for testing."""
+        """Provide active session for flag_issue exception tests.
+
+        Creates minimal active session state required for flag_issue
+        handler to validate before exception injection.
+
+        Args:
+            server: Server fixture with storage backend.
+
+        Returns:
+            Session ID string "test_session" for issue flagging tests.
+
+        Raises:
+            None: Fixture creates session without validation.
+
+        Example:
+            >>> session_id = "test_session"
+            >>> result = await server._handle_flag_issue({...}, 1)
+
+        Business context:
+            Tests require pre-existing session to exercise exception paths.
+
+        Testing Principle:
+            Fixture isolation - each test gets clean session state.
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -2089,7 +2167,30 @@ class TestLogCodeMetricsExceptionHandling:
 
     @pytest.fixture
     def session_id(self, server: SessionTrackerServer) -> str:
-        """Create a session for testing."""
+        """Provide active session for code metrics exception tests.
+
+        Creates minimal active session state required for code metrics
+        handler to process before exception injection.
+
+        Args:
+            server: Server fixture with storage backend.
+
+        Returns:
+            Session ID string "test_session" for metrics association.
+
+        Raises:
+            None: Fixture creates session without validation.
+
+        Example:
+            >>> session_id = "test_session"
+            >>> result = await server._handle_log_code_metrics({...}, 1)
+
+        Business context:
+            Tests require pre-existing session to exercise exception paths.
+
+        Testing Principle:
+            Fixture isolation - each test gets independent session.
+        """
         sessions = server.storage.load_sessions()
         sessions["test_session"] = {
             "id": "test_session",
@@ -2101,7 +2202,33 @@ class TestLogCodeMetricsExceptionHandling:
 
     @pytest.fixture
     def python_file_with_syntax_error(self) -> str:
-        """Create a Python file with syntax error."""
+        """Create a Python file with syntax error for code metrics testing.
+
+        Creates a temporary Python file containing intentionally invalid
+        syntax to test error handling in code metrics analysis.
+
+        Args:
+            self: Test class instance (implicit).
+
+        Returns:
+            Temporary file path string to the malformed Python file.
+
+        Yields:
+            Temporary file path to the malformed Python file.
+
+        Raises:
+            None: File creation does not raise in normal operation.
+
+        Example:
+            >>> python_file_with_syntax_error  # fixture usage
+            '/tmp/tmpXXXX.py'  # contains invalid syntax
+
+        Business context:
+            AI may generate code with syntax errors; metrics must handle.
+
+        Testing Principle:
+            Fixture cleanup - file is automatically deleted after test.
+        """
         import os
 
         fd, path = tempfile.mkstemp(suffix=".py")
@@ -2234,7 +2361,19 @@ class TestMissingParameterErrors:
         parameters and returns appropriate JSON-RPC error.
 
         Business context:
-        Clear error messages help agents correct their tool calls.
+            Clear error messages help agents correct their tool calls.
+
+        Arrangement:
+            Server fixture provides handler with storage backend.
+
+        Action:
+            Call _handle_end_session without session_id parameter.
+
+        Assertion Strategy:
+            Validates -32602 error code and "session_id" in message.
+
+        Testing Principle:
+            Input validation - verifies required parameter enforcement.
         """
         result = await server._handle_end_session(
             {"outcome": "success"},  # Missing session_id
@@ -2250,6 +2389,18 @@ class TestMissingParameterErrors:
         """Verifies flag_issue returns error for missing session_id.
 
         Tests that missing required parameters return proper error.
+
+        Arrangement:
+            Server fixture provides handler with storage backend.
+
+        Action:
+            Call _handle_flag_issue without session_id parameter.
+
+        Assertion Strategy:
+            Validates -32602 invalid params error code.
+
+        Testing Principle:
+            Input validation - verifies required parameter enforcement.
         """
         result = await server._handle_flag_issue(
             {
@@ -2268,6 +2419,15 @@ class TestMissingParameterErrors:
         """Verifies log_code_metrics returns error for missing file_path.
 
         Tests that missing required parameters return proper error.
+
+        Arrangement:
+            Create active session for metrics association.
+
+        Action:
+            Call _handle_log_code_metrics without file_path parameter.
+
+        Assertion Strategy:
+            Validates -32602 invalid params error code.
         """
         # First create a session
         sessions = server.storage.load_sessions()
