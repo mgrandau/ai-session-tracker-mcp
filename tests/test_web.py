@@ -154,6 +154,87 @@ class TestWebAppCreation:
         assert "/api/overview" in routes
         assert "/api/report" in routes
 
+    def test_lifespan_logs_startup_and_shutdown(self) -> None:
+        """Verifies lifespan context manager logs startup and shutdown.
+
+        Tests that the app lifespan hooks log appropriate messages on
+        server start and stop for operational observability.
+
+        Business context:
+        Startup/shutdown logging aids debugging and confirms proper
+        initialization. Critical for production monitoring.
+
+        Arrangement:
+        Create app and capture log output.
+
+        Action:
+        Enter and exit the lifespan context manager.
+
+        Assertion Strategy:
+        Validates both startup and shutdown log messages are emitted
+        with correct version and action information.
+        """
+
+        from ai_session_tracker_mcp.web.app import lifespan
+
+        app = create_app()
+
+        # Capture log output
+        with patch("ai_session_tracker_mcp.web.app.logger") as mock_logger:
+            import asyncio
+
+            async def run_lifespan() -> None:
+                async with lifespan(app):
+                    pass  # Simulate app running
+
+            asyncio.run(run_lifespan())
+
+            # Verify startup log
+            startup_call = mock_logger.info.call_args_list[0]
+            assert "starting" in startup_call[0][0].lower()
+
+            # Verify shutdown log
+            shutdown_call = mock_logger.info.call_args_list[1]
+            assert "shutting down" in shutdown_call[0][0].lower()
+
+    def test_run_dashboard_main_block(self) -> None:
+        """Verifies __main__ block calls run_dashboard correctly.
+
+        Tests that direct module execution triggers run_dashboard,
+        covering the if __name__ == '__main__' block.
+
+        Business context:
+        Direct execution via `python -m ai_session_tracker_mcp.web.app`
+        should start the dashboard server for quick development testing.
+
+        Arrangement:
+        Mock uvicorn.run to prevent actual server startup.
+
+        Action:
+        Execute the module's __main__ block by running the module code.
+
+        Assertion Strategy:
+        Validates uvicorn.run was called with the expected factory config,
+        confirming __main__ block executes correctly.
+        """
+        with patch("uvicorn.run") as mock_uvicorn:
+            # Execute the module's main block
+            import runpy
+
+            runpy.run_module(
+                "ai_session_tracker_mcp.web.app",
+                run_name="__main__",
+                alter_sys=False,
+            )
+            mock_uvicorn.assert_called_once_with(
+                "ai_session_tracker_mcp.web.app:create_app",
+                factory=True,
+                host="127.0.0.1",
+                port=8000,
+                reload=False,
+                log_level="info",
+            )
+
 
 class TestDashboardPage:
     """Test suite for main dashboard page route.
@@ -672,7 +753,7 @@ class TestHtmxPartialRoutes:
             assert response.status_code == 200
             assert "Session Gaps" in response.text
 
-    def test_gaps_partial_with_friction_indicators(self, client: TestClient) -> None:
+    def test_gaps_partial_with_friction_indicators(self) -> None:
         """Verifies gaps partial shows friction warnings when present.
 
         Tests that friction indicators from the presenter are rendered
@@ -682,26 +763,31 @@ class TestHtmxPartialRoutes:
         Friction indicators help identify adoption issues. They must
         be visible to users in the dashboard.
         """
-        with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
-            from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+        from fastapi.testclient import TestClient as TC
 
-            mock_presenter = MagicMock()
-            mock_presenter.get_session_gaps.return_value = SessionGapsViewModel(
-                total_gaps=5,
-                average_gap_minutes=90.0,
-                by_classification={"long_break": 3, "normal": 2},
-                friction_indicators=[
-                    "High long-break ratio (60%)",
-                    "Average gap exceeds 60 minutes",
-                ],
-            )
-            mock_get.return_value = mock_presenter
+        from ai_session_tracker_mcp.presenters import SessionGapsViewModel
+        from ai_session_tracker_mcp.web import create_app
+        from ai_session_tracker_mcp.web.routes import get_dashboard_presenter
 
-            response = client.get("/partials/gaps")
+        app = create_app()
+        mock_presenter = MagicMock()
+        mock_presenter.get_session_gaps.return_value = SessionGapsViewModel(
+            total_gaps=5,
+            average_gap_minutes=90.0,
+            by_classification={"long_break": 3, "normal": 2},
+            friction_indicators=[
+                "High long-break ratio (60%)",
+                "Average gap exceeds 60 minutes",
+            ],
+        )
+        app.dependency_overrides[get_dashboard_presenter] = lambda: mock_presenter
+
+        with TC(app) as test_client:
+            response = test_client.get("/partials/gaps")
             assert response.status_code == 200
             assert "long-break ratio" in response.text or "warning" in response.text.lower()
 
-    def test_sessions_partial_renders_session_rows(self, client: TestClient) -> None:
+    def test_sessions_partial_renders_session_rows(self) -> None:
         """Verifies sessions partial renders actual session data.
 
         Tests that session data from the presenter is properly
@@ -711,28 +797,35 @@ class TestHtmxPartialRoutes:
         Sessions table is the primary view of tracked work. Must
         display session details correctly.
         """
-        with patch("ai_session_tracker_mcp.web.routes.get_dashboard_presenter") as mock_get:
-            from ai_session_tracker_mcp.presenters import SessionViewModel
+        from fastapi.testclient import TestClient as TC
 
-            mock_presenter = MagicMock()
-            mock_presenter.get_sessions_list.return_value = [
-                SessionViewModel(
-                    session_id="session-abc-123-xyz",
-                    project="test-project",
-                    status="completed",
-                    duration_minutes=90.0,
-                    interaction_count=5,
-                    effectiveness_avg=4.0,
-                    start_time="2024-01-01T10:00:00Z",
-                    end_time="2024-01-01T11:30:00Z",
-                )
-            ]
-            mock_get.return_value = mock_presenter
+        from ai_session_tracker_mcp.presenters import SessionViewModel
+        from ai_session_tracker_mcp.web import create_app
+        from ai_session_tracker_mcp.web.routes import get_dashboard_presenter
 
-            response = client.get("/partials/sessions")
+        app = create_app()
+        mock_presenter = MagicMock()
+        mock_presenter.get_sessions_list.return_value = [
+            SessionViewModel(
+                session_id="session-abc-123-xyz",
+                project="test-project",
+                status="completed",
+                duration_minutes=90.0,
+                interaction_count=5,
+                effectiveness_avg=4.0,
+                start_time="2024-01-01T10:00:00Z",
+                end_time="2024-01-01T11:30:00Z",
+            )
+        ]
+        app.dependency_overrides[get_dashboard_presenter] = lambda: mock_presenter
+
+        with TC(app) as test_client:
+            response = test_client.get("/partials/sessions")
             assert response.status_code == 200
             assert "session-abc" in response.text
             assert "completed" in response.text.lower()
+
+    def test_sessions_partial_returns_html(self, client: TestClient) -> None:
         """Verifies sessions partial endpoint returns HTML table fragment.
 
         Tests that the htmx partial for sessions table returns proper
@@ -834,7 +927,7 @@ class TestHtmxPartialRoutes:
 class TestChartFallbacks:
     """Test suite for chart routes when matplotlib is unavailable."""
 
-    def test_effectiveness_chart_fallback(self, client: TestClient) -> None:
+    def test_effectiveness_chart_fallback(self) -> None:
         """Verifies effectiveness chart returns SVG placeholder when matplotlib unavailable.
 
         Tests graceful degradation when matplotlib is not installed,
@@ -844,36 +937,54 @@ class TestChartFallbacks:
         matplotlib is optional. Dashboard should work without it,
         showing placeholder instead of broken images.
         """
-        with patch("ai_session_tracker_mcp.web.routes.get_chart_presenter") as mock_get:
-            mock_presenter = MagicMock()
-            mock_presenter.render_effectiveness_chart.side_effect = ImportError("No matplotlib")
-            mock_get.return_value = mock_presenter
+        from fastapi.testclient import TestClient as TC
 
-            response = client.get("/charts/effectiveness.png")
+        from ai_session_tracker_mcp.web import create_app
+        from ai_session_tracker_mcp.web.routes import get_chart_presenter
+
+        app = create_app()
+        mock_presenter = MagicMock()
+        mock_presenter.render_effectiveness_chart.side_effect = ImportError("No matplotlib")
+        app.dependency_overrides[get_chart_presenter] = lambda: mock_presenter
+
+        with TC(app) as test_client:
+            response = test_client.get("/charts/effectiveness.png")
             assert response.status_code == 200
             assert response.headers["content-type"] == "image/svg+xml"
             assert b"Effectiveness Chart" in response.content
 
-    def test_roi_chart_fallback(self, client: TestClient) -> None:
+    def test_roi_chart_fallback(self) -> None:
         """Verifies ROI chart returns SVG placeholder when matplotlib unavailable."""
-        with patch("ai_session_tracker_mcp.web.routes.get_chart_presenter") as mock_get:
-            mock_presenter = MagicMock()
-            mock_presenter.render_roi_chart.side_effect = ImportError("No matplotlib")
-            mock_get.return_value = mock_presenter
+        from fastapi.testclient import TestClient as TC
 
-            response = client.get("/charts/roi.png")
+        from ai_session_tracker_mcp.web import create_app
+        from ai_session_tracker_mcp.web.routes import get_chart_presenter
+
+        app = create_app()
+        mock_presenter = MagicMock()
+        mock_presenter.render_roi_chart.side_effect = ImportError("No matplotlib")
+        app.dependency_overrides[get_chart_presenter] = lambda: mock_presenter
+
+        with TC(app) as test_client:
+            response = test_client.get("/charts/roi.png")
             assert response.status_code == 200
             assert response.headers["content-type"] == "image/svg+xml"
             assert b"ROI Chart" in response.content
 
-    def test_timeline_chart_fallback(self, client: TestClient) -> None:
+    def test_timeline_chart_fallback(self) -> None:
         """Verifies timeline chart returns SVG placeholder when matplotlib unavailable."""
-        with patch("ai_session_tracker_mcp.web.routes.get_chart_presenter") as mock_get:
-            mock_presenter = MagicMock()
-            mock_presenter.render_sessions_timeline.side_effect = ImportError("No matplotlib")
-            mock_get.return_value = mock_presenter
+        from fastapi.testclient import TestClient as TC
 
-            response = client.get("/charts/timeline.png")
+        from ai_session_tracker_mcp.web import create_app
+        from ai_session_tracker_mcp.web.routes import get_chart_presenter
+
+        app = create_app()
+        mock_presenter = MagicMock()
+        mock_presenter.render_sessions_timeline.side_effect = ImportError("No matplotlib")
+        app.dependency_overrides[get_chart_presenter] = lambda: mock_presenter
+
+        with TC(app) as test_client:
+            response = test_client.get("/charts/timeline.png")
             assert response.status_code == 200
             assert response.headers["content-type"] == "image/svg+xml"
             assert b"Timeline Chart" in response.content

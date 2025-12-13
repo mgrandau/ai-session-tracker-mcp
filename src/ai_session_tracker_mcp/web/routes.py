@@ -14,15 +14,171 @@ ROUTE STRUCTURE:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, Response
 
 from ..presenters import ChartPresenter, DashboardPresenter
 from ..statistics import StatisticsEngine
 from ..storage import StorageManager
 
+if TYPE_CHECKING:
+    from ..presenters import (
+        DashboardOverview,
+        EffectivenessViewModel,
+        ROIViewModel,
+        SessionGapsViewModel,
+        SessionViewModel,
+    )
+
+__all__ = [
+    "router",
+    "get_storage",
+    "get_statistics",
+    "get_dashboard_presenter",
+    "get_chart_presenter",
+]
+
 router = APIRouter()
+
+# =============================================================================
+# CSS Styles (P3-1: Extracted from _render_dashboard_html for maintainability)
+# =============================================================================
+
+_DASHBOARD_CSS = """
+:root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --primary: #3b82f6;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 1rem;
+}
+.container { max-width: 1400px; margin: 0 auto; }
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+h1 { font-size: 1.5rem; font-weight: 600; }
+.refresh-indicator {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+.panel h2 {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+.metric {
+    font-size: 2rem;
+    font-weight: 700;
+}
+.metric.positive { color: var(--success); }
+.metric.neutral { color: var(--primary); }
+.metric-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    text-align: left;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+th { color: var(--text-muted); font-weight: 500; font-size: 0.875rem; }
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+.status-active { background: var(--primary); color: white; }
+.status-completed { background: var(--success); color: white; }
+.status-abandoned { background: var(--text-muted); color: var(--bg); }
+.chart-container {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+.chart-container img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.25rem;
+}
+.bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.bar-label { width: 80px; font-size: 0.875rem; }
+.bar-track {
+    flex: 1;
+    height: 1.5rem;
+    background: var(--border);
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+.bar-fill {
+    height: 100%;
+    border-radius: 0.25rem;
+    transition: width 0.3s ease;
+}
+.bar-5 { background: var(--success); }
+.bar-4 { background: #84cc16; }
+.bar-3 { background: var(--warning); }
+.bar-2 { background: #f97316; }
+.bar-1 { background: var(--danger); }
+footer {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    text-align: center;
+}
+"""
+
+# =============================================================================
+# Dependency Factory Functions
+# =============================================================================
 
 
 def get_storage() -> StorageManager:
@@ -141,7 +297,10 @@ def get_chart_presenter() -> ChartPresenter:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
+async def dashboard_page(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+    request: Request,  # noqa: ARG001
+) -> HTMLResponse:
     """
     Render the main dashboard page with complete analytics overview.
 
@@ -154,8 +313,9 @@ async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
     ROI progress, and identify sessions needing attention.
 
     Args:
-        request: FastAPI Request object (unused but required by framework
-            for potential future enhancements like user context).
+        presenter: DashboardPresenter injected via FastAPI Depends.
+        request: FastAPI Request object (unused but kept for potential
+            future enhancements like user context).
 
     Returns:
         HTMLResponse containing the complete dashboard page with:
@@ -173,7 +333,6 @@ async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
         >>> # GET http://localhost:8000/
         >>> # Returns full HTML dashboard page
     """
-    presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
 
     # Inline template for simplicity (could move to Jinja2 file)
@@ -187,7 +346,9 @@ async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
 
 
 @router.get("/partials/sessions", response_class=HTMLResponse)
-async def sessions_partial() -> HTMLResponse:
+async def sessions_partial(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> HTMLResponse:
     """
     Render the sessions table HTML fragment for htmx partial updates.
 
@@ -216,7 +377,6 @@ async def sessions_partial() -> HTMLResponse:
         >>> # GET /partials/sessions
         >>> # Returns: <table>...</table> HTML fragment
     """
-    presenter = get_dashboard_presenter()
     sessions = presenter.get_sessions_list()
 
     html = _render_sessions_table(sessions)
@@ -224,7 +384,9 @@ async def sessions_partial() -> HTMLResponse:
 
 
 @router.get("/partials/roi", response_class=HTMLResponse)
-async def roi_partial() -> HTMLResponse:
+async def roi_partial(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> HTMLResponse:
     """
     Render the ROI summary panel HTML fragment for htmx partial updates.
 
@@ -251,7 +413,6 @@ async def roi_partial() -> HTMLResponse:
         >>> # GET /partials/roi
         >>> # Returns: <h2>💰 ROI Summary</h2>... HTML fragment
     """
-    presenter = get_dashboard_presenter()
     roi = presenter.get_roi_summary()
 
     html = _render_roi_panel(roi)
@@ -259,7 +420,9 @@ async def roi_partial() -> HTMLResponse:
 
 
 @router.get("/partials/effectiveness", response_class=HTMLResponse)
-async def effectiveness_partial() -> HTMLResponse:
+async def effectiveness_partial(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> HTMLResponse:
     """
     Render the effectiveness distribution panel HTML fragment.
 
@@ -286,7 +449,6 @@ async def effectiveness_partial() -> HTMLResponse:
         >>> # GET /partials/effectiveness
         >>> # Returns: <h2>⭐ Effectiveness</h2>... HTML fragment
     """
-    presenter = get_dashboard_presenter()
     eff = presenter.get_effectiveness()
 
     html = _render_effectiveness_panel(eff)
@@ -294,7 +456,9 @@ async def effectiveness_partial() -> HTMLResponse:
 
 
 @router.get("/partials/gaps", response_class=HTMLResponse)
-async def gaps_partial() -> HTMLResponse:
+async def gaps_partial(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> HTMLResponse:
     """
     Render the session gaps analysis panel HTML fragment.
 
@@ -316,7 +480,6 @@ async def gaps_partial() -> HTMLResponse:
         >>> # GET /partials/gaps
         >>> # Returns: <h2>⏱ Session Gaps</h2>... HTML fragment
     """
-    presenter = get_dashboard_presenter()
     gaps = presenter.get_session_gaps()
 
     html = _render_gaps_panel(gaps)
@@ -371,7 +534,9 @@ async def timeline_chart_partial() -> HTMLResponse:
 
 
 @router.get("/charts/effectiveness.png")
-async def effectiveness_chart() -> Response:
+async def effectiveness_chart(
+    presenter: Annotated[ChartPresenter, Depends(get_chart_presenter)],
+) -> Response:
     """
     Generate and serve effectiveness distribution chart as PNG image.
 
@@ -396,7 +561,6 @@ async def effectiveness_chart() -> Response:
         >>> # GET /charts/effectiveness.png
         >>> # Returns: binary PNG image data
     """
-    presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_effectiveness_chart()
         return Response(content=png_bytes, media_type="image/png")
@@ -409,7 +573,9 @@ async def effectiveness_chart() -> Response:
 
 
 @router.get("/charts/roi.png")
-async def roi_chart() -> Response:
+async def roi_chart(
+    presenter: Annotated[ChartPresenter, Depends(get_chart_presenter)],
+) -> Response:
     """
     Generate and serve ROI comparison chart as PNG image.
 
@@ -434,7 +600,6 @@ async def roi_chart() -> Response:
         >>> # GET /charts/roi.png
         >>> # Returns: binary PNG image data with cost comparison bars
     """
-    presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_roi_chart()
         return Response(content=png_bytes, media_type="image/png")
@@ -446,7 +611,9 @@ async def roi_chart() -> Response:
 
 
 @router.get("/charts/timeline.png")
-async def timeline_chart() -> Response:
+async def timeline_chart(
+    presenter: Annotated[ChartPresenter, Depends(get_chart_presenter)],
+) -> Response:
     """
     Generate and serve sessions timeline chart as PNG image.
 
@@ -471,7 +638,6 @@ async def timeline_chart() -> Response:
         >>> # GET /charts/timeline.png
         >>> # Returns: binary PNG image with session bars over time
     """
-    presenter = get_chart_presenter()
     try:
         png_bytes = presenter.render_sessions_timeline()
         return Response(content=png_bytes, media_type="image/png")
@@ -488,7 +654,9 @@ async def timeline_chart() -> Response:
 
 
 @router.get("/api/overview")
-async def api_overview() -> dict[str, object]:
+async def api_overview(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> dict[str, object]:
     """
     Get complete dashboard data as JSON for programmatic access.
 
@@ -520,7 +688,6 @@ async def api_overview() -> dict[str, object]:
         ...     "effectiveness": {"distribution": {"5": 8, ...}, "average": 4.2}
         ... }
     """
-    presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
     return {
         "sessions": [
@@ -559,7 +726,9 @@ async def api_overview() -> dict[str, object]:
 
 
 @router.get("/api/report")
-async def api_report() -> dict[str, str]:
+async def api_report(
+    presenter: Annotated[DashboardPresenter, Depends(get_dashboard_presenter)],
+) -> dict[str, str]:
     """
     Get formatted text analytics report as JSON.
 
@@ -588,7 +757,6 @@ async def api_report() -> dict[str, str]:
         ...               "AI SESSION TRACKER - ANALYTICS REPORT\n..."
         ... }
     """
-    presenter = get_dashboard_presenter()
     overview = presenter.get_overview()
     return {"report": overview.report_text}
 
@@ -666,8 +834,6 @@ def _render_dashboard_html(overview: object) -> str:
         >>> '<!DOCTYPE html>' in html
         True
     """
-    from ..presenters import DashboardOverview
-
     ov: DashboardOverview = overview  # type: ignore[assignment]
 
     sessions_html = _render_sessions_table(ov.sessions)
@@ -683,133 +849,7 @@ def _render_dashboard_html(overview: object) -> str:
     <title>AI Session Tracker - Dashboard</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
-        :root {{
-            --bg: #0f172a;
-            --surface: #1e293b;
-            --border: #334155;
-            --text: #f1f5f9;
-            --text-muted: #94a3b8;
-            --primary: #3b82f6;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-        }}
-        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{
-            font-family: system-ui, -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            padding: 1rem;
-        }}
-        .container {{ max-width: 1400px; margin: 0 auto; }}
-        header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border);
-        }}
-        h1 {{ font-size: 1.5rem; font-weight: 600; }}
-        .refresh-indicator {{
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }}
-        .grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }}
-        .panel {{
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            padding: 1rem;
-        }}
-        .panel h2 {{
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
-        }}
-        .metric {{
-            font-size: 2rem;
-            font-weight: 700;
-        }}
-        .metric.positive {{ color: var(--success); }}
-        .metric.neutral {{ color: var(--primary); }}
-        .metric-label {{
-            font-size: 0.875rem;
-            color: var(--text-muted);
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-        }}
-        th, td {{
-            text-align: left;
-            padding: 0.75rem;
-            border-bottom: 1px solid var(--border);
-        }}
-        th {{ color: var(--text-muted); font-weight: 500; font-size: 0.875rem; }}
-        .status-badge {{
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }}
-        .status-active {{ background: var(--primary); color: white; }}
-        .status-completed {{ background: var(--success); color: white; }}
-        .status-abandoned {{ background: var(--text-muted); color: var(--bg); }}
-        .chart-container {{
-            display: flex;
-            justify-content: center;
-            padding: 1rem 0;
-        }}
-        .chart-container img {{
-            max-width: 100%;
-            height: auto;
-            border-radius: 0.25rem;
-        }}
-        .bar-chart {{
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }}
-        .bar-row {{
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }}
-        .bar-label {{ width: 80px; font-size: 0.875rem; }}
-        .bar-track {{
-            flex: 1;
-            height: 1.5rem;
-            background: var(--border);
-            border-radius: 0.25rem;
-            overflow: hidden;
-        }}
-        .bar-fill {{
-            height: 100%;
-            border-radius: 0.25rem;
-            transition: width 0.3s ease;
-        }}
-        .bar-5 {{ background: var(--success); }}
-        .bar-4 {{ background: #84cc16; }}
-        .bar-3 {{ background: var(--warning); }}
-        .bar-2 {{ background: #f97316; }}
-        .bar-1 {{ background: var(--danger); }}
-        footer {{
-            margin-top: 2rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--border);
-            color: var(--text-muted);
-            font-size: 0.875rem;
-            text-align: center;
-        }}
+        {_DASHBOARD_CSS}
     </style>
 </head>
 <body>
@@ -917,8 +957,6 @@ def _render_sessions_table(sessions: Sequence[object]) -> str:
         >>> '<table>' in html
         True
     """
-    from ..presenters import SessionViewModel
-
     rows = ""
     for s in sessions:
         s_typed: SessionViewModel = s  # type: ignore[assignment]
@@ -984,8 +1022,6 @@ def _render_roi_panel(roi: object) -> str:
         >>> '💰 ROI Summary' in html
         True
     """
-    from ..presenters import ROIViewModel
-
     r: ROIViewModel = roi  # type: ignore[assignment]
     metric_class = "positive" if r.roi_percentage >= 0 else "neutral"
 
@@ -1030,8 +1066,6 @@ def _render_effectiveness_panel(eff: object) -> str:
         >>> '⭐ Effectiveness' in html
         True
     """
-    from ..presenters import EffectivenessViewModel
-
     e: EffectivenessViewModel = eff  # type: ignore[assignment]
 
     bars = ""
@@ -1080,8 +1114,6 @@ def _render_gaps_panel(gaps: object) -> str:
         >>> '⏱ Session Gaps' in html
         True
     """
-    from ..presenters import SessionGapsViewModel
-
     g: SessionGapsViewModel = gaps  # type: ignore[assignment]
 
     # Classification breakdown

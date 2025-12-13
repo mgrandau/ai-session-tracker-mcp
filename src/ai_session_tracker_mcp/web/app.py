@@ -7,13 +7,50 @@ AI CONTEXT: Creates app with all routes registered.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from ..__version__ import __version__
 from .routes import router
+
+__all__ = ["create_app", "run_dashboard"]
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: ARG001
+    """
+    Manage application lifecycle with startup/shutdown hooks.
+
+    Context manager that runs setup code before the application starts
+    accepting requests and cleanup code after the last request completes.
+
+    Business context: Provides observability into dashboard server state
+    changes. Startup logging confirms successful initialization, while
+    shutdown logging aids debugging of unexpected terminations.
+
+    Args:
+        app: The FastAPI application instance (provided by FastAPI).
+
+    Yields:
+        None. Control returns to FastAPI to handle requests.
+
+    Example:
+        >>> # Used automatically by create_app()
+        >>> app = create_app()  # lifespan hooks registered
+    """
+    # Startup
+    logger.info("AI Session Tracker dashboard starting (v%s)", __version__)
+    yield
+    # Shutdown
+    logger.info("AI Session Tracker dashboard shutting down")
 
 
 def create_app() -> FastAPI:
@@ -54,7 +91,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI Session Tracker",
         description="Dashboard for tracking AI coding sessions and ROI",
-        version="0.1.0",
+        version=__version__,
+        lifespan=lifespan,
     )
 
     # Include routes
@@ -72,6 +110,7 @@ def run_dashboard(
     host: str = "127.0.0.1",
     port: int = 8000,
     reload: bool = False,
+    log_level: str = "info",
 ) -> None:
     """
     Launch the AI Session Tracker web dashboard server.
@@ -91,6 +130,8 @@ def run_dashboard(
             Common alternatives: 3000, 5000, 8080.
         reload: Enable auto-reload on code changes for development.
             Should be False in production for stability.
+        log_level: Uvicorn logging verbosity. One of 'critical', 'error',
+            'warning', 'info' (default), 'debug', or 'trace'.
 
     Returns:
         None. This function blocks until the server is stopped (Ctrl+C).
@@ -113,6 +154,7 @@ def run_dashboard(
         host=host,
         port=port,
         reload=reload,
+        log_level=log_level,
     )
 
 
