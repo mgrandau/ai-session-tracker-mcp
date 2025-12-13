@@ -1,2 +1,224 @@
 # ai-session-tracker-mcp
-MCP server for tracking AI coding sessions and measuring developer productivity.
+
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP Protocol](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+
+**MCP server for tracking AI coding sessions and measuring developer productivity.**
+
+Track your AI-assisted coding sessions, measure effectiveness, calculate ROI, and identify workflow friction points — all through the Model Context Protocol.
+
+---
+
+## ✨ Features
+
+- 📊 **Session Tracking** — Start, log interactions, and end coding sessions with full context
+- 📈 **ROI Metrics** — Calculate time saved, cost savings, and productivity multipliers
+- 🎯 **Effectiveness Ratings** — Rate AI responses 1-5 to track quality over time
+- 🔍 **Code Metrics** — Analyze complexity and documentation quality of modified code
+- 🌐 **Web Dashboard** — Real-time charts and analytics via FastAPI + htmx
+- 🤖 **Agent Files** — Pre-configured chat modes and instruction files for VS Code
+
+---
+
+## 📦 Installation
+
+### From Git Repository
+
+```bash
+# Install directly from GitHub
+pip install git+https://github.com/mgrandau/ai-session-tracker-mcp.git
+
+# Or with pipx for isolated installation
+pipx install git+https://github.com/mgrandau/ai-session-tracker-mcp.git
+```
+
+### Configure for VS Code
+
+After installing, run the install command in your project directory:
+
+```bash
+# Navigate to your project
+cd /path/to/your/project
+
+# Install MCP configuration and agent files
+ai-session-tracker install
+```
+
+This creates:
+- `.vscode/mcp.json` — MCP server configuration
+- `.github/instructions/` — AI instruction files
+- `.github/chatmodes/` — VS Code chat mode definitions
+
+---
+
+## 🚀 Quick Start
+
+### 1. Start a Session
+
+The MCP tools are available in VS Code Copilot Chat when using the "Session Tracked Agent" chat mode:
+
+```
+@session Start a new session for "Implement user authentication"
+```
+
+### 2. Log Interactions
+
+Interactions are logged automatically by the agent, or manually:
+
+```
+@session Log this interaction with rating 4
+```
+
+### 3. End Session
+
+```
+@session End the session with outcome "success"
+```
+
+### 4. View Dashboard
+
+```bash
+# Open the web dashboard
+ai-session-tracker dashboard
+
+# Then visit http://localhost:8050
+```
+
+---
+
+## 🛠️ CLI Commands
+
+```bash
+# Start MCP server (for VS Code integration)
+ai-session-tracker server
+
+# Start MCP server with embedded dashboard
+ai-session-tracker server --dashboard-host 0.0.0.0 --dashboard-port 8050
+
+# Start standalone web dashboard
+ai-session-tracker dashboard [--host HOST] [--port PORT]
+
+# Generate text report to stdout
+ai-session-tracker report
+
+# Install MCP config and agent files to current project
+ai-session-tracker install
+```
+
+---
+
+## 🔧 MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `start_ai_session` | Begin a new tracking session |
+| `log_ai_interaction` | Record a prompt/response exchange |
+| `end_ai_session` | Complete session with outcome |
+| `flag_ai_issue` | Report problems for analysis |
+| `log_code_metrics` | Analyze modified code quality |
+| `get_ai_observability` | Retrieve analytics report |
+| `get_active_sessions` | List sessions not yet ended |
+
+---
+
+## 📁 Project Structure
+
+```
+ai-session-tracker-mcp/
+├── src/ai_session_tracker_mcp/    # Main package
+│   ├── server.py                  # MCP server implementation
+│   ├── models.py                  # Domain models
+│   ├── storage.py                 # JSON persistence
+│   ├── statistics.py              # Analytics engine
+│   ├── presenters.py              # Dashboard view models
+│   ├── cli.py                     # Command-line interface
+│   ├── web/                       # FastAPI dashboard
+│   └── agent_files/               # VS Code integration files
+├── tests/                         # Test suite (414 tests)
+└── utils/                         # Development utilities
+```
+
+---
+
+## 📚 Architecture Documentation
+
+Detailed AI-readable architecture docs for each component:
+
+| Component | Documentation |
+|-----------|---------------|
+| Main Package | [src/ai_session_tracker_mcp/README.md](src/ai_session_tracker_mcp/README.md) |
+| Test Suite | [tests/README.md](tests/README.md) |
+
+---
+
+## 🧪 Development
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/mgrandau/ai-session-tracker-mcp.git
+cd ai-session-tracker-mcp
+
+# Install with PDM
+pdm install
+
+# Run tests
+pdm run test
+
+# Run all checks (lint, typecheck, security, test-cov)
+pdm run check-all
+```
+
+### Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pdm run test` | Run pytest |
+| `pdm run test-cov` | Run tests with coverage |
+| `pdm run lint` | Run ruff linter |
+| `pdm run format` | Format code with ruff |
+| `pdm run typecheck` | Run mypy type checker |
+| `pdm run security` | Run bandit security scan |
+| `pdm run check-all` | Run all checks |
+
+---
+
+## 📊 Data Storage
+
+Session data is stored in `.ai_sessions/` in your project root:
+
+```
+.ai_sessions/
+├── sessions.json      # Session metadata
+├── interactions.json  # Logged interactions
+├── issues.json        # Flagged issues
+└── charts/            # Generated chart images
+```
+
+---
+
+## 🔒 Stability
+
+- **MCP Tools** — 🔒 ABI-frozen, breaking changes require major version bump
+- **CLI Commands** — 🔒 ABI-frozen
+- **Core Classes** — 🔒 ABI-frozen (Session, Interaction, Issue, etc.)
+- **Internal APIs** — ⚠️ Subject to change (Presenters, ViewModels)
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please ensure:
+- All tests pass (`pdm run test`)
+- Code is formatted (`pdm run format`)
+- No lint errors (`pdm run lint`)
+- Type checks pass (`pdm run typecheck`)

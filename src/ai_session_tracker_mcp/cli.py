@@ -15,7 +15,7 @@ USAGE:
     ai-session-tracker server     # Start MCP server
     ai-session-tracker dashboard  # Launch web dashboard
     ai-session-tracker report     # Print text report
-    ai-session-tracker init       # Create .vscode/mcp.json
+    ai-session-tracker install    # Create .vscode/mcp.json
 """
 
 from __future__ import annotations
@@ -330,13 +330,13 @@ def _copy_agent_files(
                 _log(f"{rel_path} exists", emoji="✓")
 
 
-def run_init(
+def run_install(
     filesystem: FileSystem | None = None,
     cwd: str | None = None,
     package_dir: str | None = None,
 ) -> None:
     """
-    Initialize AI Session Tracker for the current project.
+    Install AI Session Tracker for the current project.
 
     Creates or updates .vscode/mcp.json to include the ai-session-tracker
     MCP server configuration, and copies chatmode and instruction files
@@ -366,8 +366,8 @@ def run_init(
 
     Example:
         >>> # From command line in project root:
-        >>> # ai-session-tracker init
-        >>> run_init()
+        >>> # ai-session-tracker install
+        >>> run_install()
         📄 Creating new config: .vscode/mcp.json
         ➕ Adding ai-session-tracker to MCP servers
         ✅ Successfully installed ai-session-tracker
@@ -445,7 +445,7 @@ def main() -> int:
     - server: Run MCP server (default)
     - dashboard [--host HOST] [--port PORT]: Launch web dashboard
     - report: Print text analytics report
-    - init: Initialize project with MCP configuration
+    - install: Install project with MCP configuration
 
     Returns:
         Exit code 0 for success. Non-zero codes reserved for future
@@ -513,9 +513,9 @@ def main() -> int:
         help="Print analytics report to stdout",
     )
 
-    # Init command
+    # Install command
     subparsers.add_parser(
-        "init",
+        "install",
         help="Create .vscode/mcp.json for this project",
     )
 
@@ -525,8 +525,8 @@ def main() -> int:
         run_dashboard(host=args.host, port=args.port)
     elif args.command == "report":
         run_report()
-    elif args.command == "init":
-        run_init()
+    elif args.command == "install":
+        run_install()
     elif args.command == "server":
         run_server(
             dashboard_host=args.dashboard_host,

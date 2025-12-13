@@ -1353,7 +1353,7 @@ Session: {session_id}
 
         return self._error_response(msg_id, -32601, f"Unknown method: {method}")
 
-    async def run(self) -> None:
+    async def run(self) -> None:  # pragma: no cover
         """
         Run the MCP server event loop in stdio mode.
 
@@ -1467,7 +1467,7 @@ Session: {session_id}
             logger.error(f"Error closing active sessions: {e}")
 
 
-async def main() -> None:
+async def main() -> None:  # pragma: no cover
     """
     Entry point for the AI Session Tracker MCP server.
 

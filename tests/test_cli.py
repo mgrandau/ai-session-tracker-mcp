@@ -546,33 +546,33 @@ class TestRunServerWithDashboard:
             mock_asyncio.assert_called_once()
 
 
-class TestRunInit:
-    """Tests for run_init command."""
+class TestRunInstall:
+    """Tests for run_install command."""
 
-    def test_run_init_creates_mcp_json(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init creates .vscode/mcp.json with server config.
+    def test_run_install_creates_mcp_json(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install creates .vscode/mcp.json with server config.
 
-        Tests that the init command creates the configuration file
+        Tests that the install command creates the configuration file
         in the expected location with proper structure.
 
         Business context:
         Users need a simple way to configure the MCP server.
-        run_init automates the setup process.
+        run_install automates the setup process.
 
         Arrangement:
         Use MockFileSystem for isolated testing.
 
         Action:
-        Call run_init function with mock filesystem.
+        Call run_install function with mock filesystem.
 
         Assertion Strategy:
         Validates mcp.json exists and contains server configuration.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         config_content = mock_fs.get_file("/project/.vscode/mcp.json")
         assert config_content is not None
@@ -581,35 +581,35 @@ class TestRunInit:
         assert "servers" in config
         assert "ai-session-tracker" in config["servers"]
 
-    def test_run_init_updates_existing_config(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init updates existing mcp.json without losing data.
+    def test_run_install_updates_existing_config(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install updates existing mcp.json without losing data.
 
-        Tests that run_init preserves existing server configs while
+        Tests that run_install preserves existing server configs while
         adding the ai-session-tracker entry.
 
         Business context:
-        Users may already have other MCP servers configured. Init
+        Users may already have other MCP servers configured. Install
         should not overwrite their existing configuration.
 
         Arrangement:
         Create existing mcp.json with other servers in mock filesystem.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates both original and new servers exist in config.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Set up existing config
         mock_fs.makedirs("/project/.vscode", exist_ok=True)
         existing_config = {"servers": {"other-server": {"command": "other"}}}
         mock_fs.set_file("/project/.vscode/mcp.json", json.dumps(existing_config))
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         config_content = mock_fs.get_file("/project/.vscode/mcp.json")
         config = json.loads(config_content)
@@ -617,34 +617,34 @@ class TestRunInit:
         assert "other-server" in config["servers"]
         assert "ai-session-tracker" in config["servers"]
 
-    def test_run_init_handles_invalid_json(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init handles corrupt mcp.json gracefully.
+    def test_run_install_handles_invalid_json(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install handles corrupt mcp.json gracefully.
 
-        Tests that run_init creates backup of invalid JSON and
+        Tests that run_install creates backup of invalid JSON and
         proceeds with fresh configuration.
 
         Business context:
-        Configuration files can become corrupted. Init should
+        Configuration files can become corrupted. Install should
         recover gracefully rather than failing.
 
         Arrangement:
         Create mcp.json with invalid JSON content in mock filesystem.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates backup created and new config is valid.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Set up invalid JSON
         mock_fs.makedirs("/project/.vscode", exist_ok=True)
         mock_fs.set_file("/project/.vscode/mcp.json", "{ invalid json }")
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Check backup was created
         assert mock_fs.exists("/project/.vscode/mcp.json.bak")
@@ -654,26 +654,26 @@ class TestRunInit:
         config = json.loads(config_content)
         assert "servers" in config
 
-    def test_run_init_copies_agent_files(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init copies chatmode and instruction files.
+    def test_run_install_copies_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install copies chatmode and instruction files.
 
-        Tests that init copies bundled files to .github directory
+        Tests that install copies bundled files to .github directory
         for VS Code agent integration.
 
         Business context:
         Users need chatmode and instruction files for the tracked
-        agent workflow. Init automates their installation.
+        agent workflow. Install automates their installation.
 
         Arrangement:
         Set up bundled files in mock filesystem.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates .github directories created with copied files.
         """
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
         mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
@@ -683,33 +683,33 @@ class TestRunInit:
             "/pkg/agent_files/instructions/test.instructions.md", "# Test Instructions"
         )
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Verify files were copied
         assert mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
         assert mock_fs.exists("/project/.github/instructions/test.instructions.md")
         assert mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Test Chatmode"
 
-    def test_run_init_skips_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init doesn't overwrite existing agent files.
+    def test_run_install_skips_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install doesn't overwrite existing agent files.
 
-        Tests that init skips copying files that already exist at
+        Tests that install skips copying files that already exist at
         the destination.
 
         Business context:
-        Users may have customized their agent files. Init should
+        Users may have customized their agent files. Install should
         not overwrite their modifications.
 
         Arrangement:
         Set up both source and destination files in mock filesystem.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates existing file content is preserved.
         """
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
         mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
@@ -719,15 +719,15 @@ class TestRunInit:
         mock_fs.makedirs("/project/.github/chatmodes", exist_ok=True)
         mock_fs.set_file("/project/.github/chatmodes/test.chatmode.md", "# Existing Content")
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Verify existing content is preserved
         assert (
             mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Existing Content"
         )
 
-    def test_run_init_fallback_to_module_invocation(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init uses module invocation when executable not found.
+    def test_run_install_fallback_to_module_invocation(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install uses module invocation when executable not found.
 
         Tests that when the ai-session-tracker executable doesn't exist,
         the config falls back to 'python -m ai_session_tracker_mcp server'.
@@ -740,19 +740,19 @@ class TestRunInit:
         MockFileSystem does not have the executable path, so fs.exists returns False.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates config uses '-m ai_session_tracker_mcp server' args.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # MockFileSystem doesn't have the bin_dir/ai-session-tracker path,
         # so fs.exists() returns False for it automatically
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         config_content = mock_fs.get_file("/project/.vscode/mcp.json")
         config = json.loads(config_content)
@@ -762,28 +762,28 @@ class TestRunInit:
         assert server_config["args"] == ["-m", "ai_session_tracker_mcp", "server"]
         assert server_config["command"] == sys.executable
 
-    def test_run_init_already_up_to_date(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init reports when config is already up to date.
+    def test_run_install_already_up_to_date(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install reports when config is already up to date.
 
         Tests that when ai-session-tracker is already configured with
-        the same settings, run_init reports it's up to date.
+        the same settings, run_install reports it's up to date.
 
         Business context:
-        Users may run init multiple times. Should gracefully handle
+        Users may run install multiple times. Should gracefully handle
         already-configured state without unnecessary changes.
 
         Arrangement:
         Create config with matching ai-session-tracker entry.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates "already installed and up to date" message shown.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Pre-create config with matching entry
         mock_fs.makedirs("/project/.vscode", exist_ok=True)
@@ -799,7 +799,7 @@ class TestRunInit:
 
         captured = StringIO()
         with patch.object(sys, "stdout", captured):
-            run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+            run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Log output goes to logger, not stdout - check logging instead
         # Config should remain unchanged
@@ -807,28 +807,28 @@ class TestRunInit:
         config = json.loads(config_content)
         assert config["servers"]["ai-session-tracker"]["command"] == sys.executable
 
-    def test_run_init_updates_outdated_config(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_init updates config when settings differ.
+    def test_run_install_updates_outdated_config(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install updates config when settings differ.
 
         Tests that when ai-session-tracker is configured with different
-        settings, run_init updates to current settings.
+        settings, run_install updates to current settings.
 
         Business context:
-        Users may have outdated config from previous install. Init
+        Users may have outdated config from previous install. Install
         should update to current settings.
 
         Arrangement:
         Create config with different ai-session-tracker entry.
 
         Action:
-        Call run_init function.
+        Call run_install function.
 
         Assertion Strategy:
         Validates config was updated to new values.
         """
         import json
 
-        from ai_session_tracker_mcp.cli import run_init
+        from ai_session_tracker_mcp.cli import run_install
 
         # Pre-create config with outdated entry
         mock_fs.makedirs("/project/.vscode", exist_ok=True)
@@ -842,7 +842,7 @@ class TestRunInit:
         }
         mock_fs.set_file("/project/.vscode/mcp.json", json.dumps(existing_config))
 
-        run_init(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Verify config was updated
         config_content = mock_fs.get_file("/project/.vscode/mcp.json")
