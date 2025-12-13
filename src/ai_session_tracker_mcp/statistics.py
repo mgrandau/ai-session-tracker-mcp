@@ -350,6 +350,154 @@ class StatisticsEngine:
             "total_effort_score": round(total_effort, 2),
         }
 
+    def calculate_session_gaps(self, sessions: dict[str, Any]) -> dict[str, Any]:
+        """
+        Calculate time gaps between consecutive sessions.
+
+        Analyzes the time between session end and next session start to identify
+        workflow patterns and potential friction points. Long gaps may indicate
+        tool friction, context switching costs, or workflow interruptions.
+
+        Business context: Gap analysis helps identify friction in AI-assisted
+        workflows. Frequent long gaps may suggest the tool is difficult to use
+        or that users abandon it after difficult interactions.
+
+        Gap Classifications:
+        - Quick (<5 min): Rapid iteration, healthy flow
+        - Normal (5-30 min): Standard breaks, context switches
+        - Extended (30 min - 2 hr): Meetings, other work
+        - Long break (2+ hr): Extended away time, potential friction
+
+        Args:
+            sessions: Dict of session_id -> session_data containing start_time
+                and end_time ISO 8601 timestamps.
+
+        Returns:
+            Dict with gap analysis:
+            - 'gaps': List of individual gaps with duration_minutes, classification,
+              from_session, to_session, and timestamps
+            - 'summary': Dict with total_gaps, average_gap_minutes, by_classification
+            - 'friction_indicators': List of potential friction patterns detected
+
+        Example:
+            >>> engine = StatisticsEngine()
+            >>> gaps = engine.calculate_session_gaps(sessions)
+            >>> gaps['summary']['average_gap_minutes']
+            15.5
+        """
+        # Extract sessions with valid timestamps and sort by start time
+        session_list: list[tuple[str, datetime, datetime | None]] = []
+
+        for session_id, session in sessions.items():
+            start_str = session.get("start_time", "")
+            end_str = session.get("end_time", "")
+
+            if not start_str:
+                continue
+
+            try:
+                start_str = start_str.replace("Z", "+00:00")
+                start = datetime.fromisoformat(start_str)
+
+                end = None
+                if end_str:
+                    end_str = end_str.replace("Z", "+00:00")
+                    end = datetime.fromisoformat(end_str)
+
+                session_list.append((session_id, start, end))
+            except (ValueError, TypeError):
+                continue
+
+        # Sort by start time
+        session_list.sort(key=lambda x: x[1])
+
+        # Calculate gaps between consecutive sessions
+        gaps: list[dict[str, Any]] = []
+        classification_counts: dict[str, int] = {
+            "quick": 0,
+            "normal": 0,
+            "extended": 0,
+            "long_break": 0,
+        }
+
+        for i in range(len(session_list) - 1):
+            current_id, _current_start, current_end = session_list[i]
+            next_id, next_start, _next_end = session_list[i + 1]
+
+            # Use end time if available, otherwise skip
+            if current_end is None:
+                continue
+
+            gap_delta = next_start - current_end
+            gap_minutes = gap_delta.total_seconds() / 60.0
+
+            # Skip negative gaps (overlapping sessions)
+            if gap_minutes < 0:
+                continue
+
+            # Classify gap
+            if gap_minutes < 5:
+                classification = "quick"
+            elif gap_minutes < 30:
+                classification = "normal"
+            elif gap_minutes < 120:
+                classification = "extended"
+            else:
+                classification = "long_break"
+
+            classification_counts[classification] += 1
+
+            gaps.append(
+                {
+                    "from_session": current_id,
+                    "to_session": next_id,
+                    "from_end": current_end.isoformat(),
+                    "to_start": next_start.isoformat(),
+                    "duration_minutes": round(gap_minutes, 1),
+                    "classification": classification,
+                }
+            )
+
+        # Calculate summary statistics
+        total_gaps = len(gaps)
+        avg_gap = sum(g["duration_minutes"] for g in gaps) / total_gaps if total_gaps else 0
+
+        # Detect friction indicators
+        friction_indicators: list[str] = []
+
+        if total_gaps > 0:
+            long_break_ratio = classification_counts["long_break"] / total_gaps
+            if long_break_ratio > 0.3:
+                friction_indicators.append(
+                    f"High long-break ratio ({long_break_ratio:.0%}) - potential tool friction"
+                )
+
+            if avg_gap > 60:
+                friction_indicators.append(
+                    f"High average gap ({avg_gap:.0f}min) - users may be avoiding tool"
+                )
+
+            # Check for increasing gaps over time (trend)
+            if len(gaps) >= 3:
+                first_half = gaps[: len(gaps) // 2]
+                second_half = gaps[len(gaps) // 2 :]
+                first_avg = sum(g["duration_minutes"] for g in first_half) / len(first_half)
+                second_avg = sum(g["duration_minutes"] for g in second_half) / len(second_half)
+                if second_avg > first_avg * 1.5:
+                    friction_indicators.append(
+                        "Gaps increasing over time - possible adoption decline"
+                    )
+
+        return {
+            "gaps": gaps,
+            "summary": {
+                "total_gaps": total_gaps,
+                "average_gap_minutes": round(avg_gap, 1),
+                "by_classification": classification_counts,
+            },
+            "friction_indicators": friction_indicators,
+        }
+
     def calculate_roi_metrics(
         self,
         sessions: dict[str, Any],
@@ -404,21 +552,23 @@ class StatisticsEngine:
         # Filter to productive sessions only
         productive = Config.filter_productive_sessions(sessions)
 
-        # Calculate total AI time
+        # Calculate total AI time and sum human estimates
         total_ai_minutes = 0.0
+        total_human_estimate_minutes = 0.0
         completed_sessions = 0
 
         for session in productive.values():
             if session.get("status") == "completed":
                 duration = self.calculate_session_duration_minutes(session)
                 total_ai_minutes += duration
+                # Use actual human estimate from session
+                human_estimate = session.get("human_time_estimate_minutes", 0)
+                total_human_estimate_minutes += human_estimate
                 completed_sessions += 1
 
         total_ai_hours = total_ai_minutes / 60.0
-
-        # Estimate human baseline (conservative 3x multiplier)
-        # This assumes AI is ~3x faster than human for tracked tasks
-        estimated_human_hours = total_ai_hours * 3.0
+        estimated_human_hours = total_human_estimate_minutes / 60.0
+        time_saved_hours = estimated_human_hours - total_ai_hours
 
         # Calculate costs
         human_cost = estimated_human_hours * self.human_hourly_rate
@@ -444,7 +594,7 @@ class StatisticsEngine:
                 "total_ai_minutes": round(total_ai_minutes, 1),
                 "total_ai_hours": round(total_ai_hours, 2),
                 "estimated_human_hours": round(estimated_human_hours, 2),
-                "time_saved_hours": round(estimated_human_hours - total_ai_hours, 2),
+                "time_saved_hours": round(time_saved_hours, 2),
                 "completed_sessions": completed_sessions,
             },
             "cost_metrics": {

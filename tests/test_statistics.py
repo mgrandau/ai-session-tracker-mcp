@@ -808,6 +808,7 @@ class TestROIMetrics:
         task_type: str = "code_generation",
         status: str = "completed",
         duration_minutes: int = 60,
+        human_time_estimate_minutes: int | None = None,
     ) -> dict[str, Any]:
         """Create a session dictionary for ROI metric testing.
 
@@ -823,23 +824,32 @@ class TestROIMetrics:
             task_type: Category of work (default: code_generation).
             status: Session state - 'completed' or 'active'.
             duration_minutes: Time span for completed sessions.
+            human_time_estimate_minutes: Estimated human time for task.
+                Defaults to 3x duration_minutes if not specified.
 
         Returns:
             dict: Session data with id, task_type, status, start_time,
-                and end_time (None if status is not 'completed').
+                end_time, and human_time_estimate_minutes.
 
         Example:
             session = self._make_session("s1", "debugging", "completed", 30)
-            # Creates 30-minute debugging session
+            # Creates 30-minute debugging session with 90-minute human estimate
         """
         start = datetime.now(UTC)
         end = start + timedelta(minutes=duration_minutes) if status == "completed" else None
+        # Default human estimate to 3x AI time for backwards compatibility
+        human_estimate = (
+            human_time_estimate_minutes
+            if human_time_estimate_minutes is not None
+            else duration_minutes * 3
+        )
         return {
             "id": session_id,
             "task_type": task_type,
             "status": status,
             "start_time": start.isoformat(),
             "end_time": end.isoformat() if end else None,
+            "human_time_estimate_minutes": human_estimate,
         }
 
     def test_empty_data(self, engine: StatisticsEngine) -> None:
@@ -938,35 +948,36 @@ class TestROIMetrics:
         assert result["time_metrics"]["completed_sessions"] == 1
 
     def test_calculates_human_baseline(self, engine: StatisticsEngine) -> None:
-        """Verifies human baseline estimated as 3x AI time.
+        """Verifies human baseline uses actual estimate from session.
 
-        Tests the productivity multiplier assumption that humans would
-        take 3x longer than AI-assisted time.
+        Tests that the human time estimate provided when starting the
+        session is used for ROI calculation.
 
         Business context:
-        ROI depends on comparison to human baseline. 3x multiplier is
-        conservative estimate based on productivity research.
+        ROI depends on comparison to human baseline. Using actual
+        estimates from session start provides accurate comparison.
 
         Arrangement:
-        One 60-minute completed session.
+        One 60-minute completed session with 180-minute human estimate.
 
         Action:
         Call calculate_roi_metrics and check estimated_human_hours.
 
         Assertion Strategy:
-        Validates human hours = AI hours * 3:
-        - 1 AI hour * 3 = 3 human hours expected
+        Validates human hours matches session estimate:
+        - 180 minutes = 3 human hours expected
 
         Testing Principle:
-        Validates productivity multiplier application.
+        Validates actual estimates used instead of multiplier.
         """
         sessions = {
-            "s1": self._make_session("s1", "code_generation", "completed", 60),
+            "s1": self._make_session(
+                "s1", "code_generation", "completed", 60, human_time_estimate_minutes=180
+            ),
         }
         result = engine.calculate_roi_metrics(sessions, [])
 
-        ai_hours = 1.0  # 60 minutes
-        expected_human_hours = ai_hours * 3.0
+        expected_human_hours = 3.0  # 180 minutes
         assert result["time_metrics"]["estimated_human_hours"] == pytest.approx(
             expected_human_hours, abs=0.1
         )

@@ -12,7 +12,8 @@ Call `start_ai_session(name, type, model, mins, source)` before any other tool.
    - model: your model name (e.g. "claude-opus-4-20250514")
    - mins: human time estimate in minutes (see table)
    - source: issue_tracker|manual|historical
-2. **Log** → `log_ai_interaction(session_id, prompt, response_summary, rating)` — rating 1-5
+2. **Log** → `log_ai_interaction(session_id, prompt, summary, rating)` after each response
+   - rating: 1=failed 2=poor 3=partial 4=good 5=perfect
 3. **Flag** → `flag_ai_issue(session_id, type, desc, severity)` — severity: critical|high|medium|low
 4. **End** → `end_ai_session(session_id, outcome)` — outcome: success|partial|failed
 

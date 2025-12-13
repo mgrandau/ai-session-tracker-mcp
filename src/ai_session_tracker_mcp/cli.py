@@ -27,7 +27,10 @@ import sys
 from pathlib import Path
 
 
-def run_server() -> None:
+def run_server(
+    dashboard_host: str | None = None,
+    dashboard_port: int | None = None,
+) -> None:
     """
     Run the MCP server in stdio mode.
 
@@ -35,9 +38,16 @@ def run_server() -> None:
     stdin/stdout using JSON-RPC 2.0 protocol. This is the default
     command and the mode used by VS Code for MCP integration.
 
+    Optionally starts the dashboard web server in a background process
+    if dashboard_host and dashboard_port are provided.
+
     Business context: The MCP server is the core component that enables
     AI assistants in VS Code to track sessions, log interactions, and
     calculate ROI metrics during development workflows.
+
+    Args:
+        dashboard_host: If provided, start dashboard on this host.
+        dashboard_port: If provided, start dashboard on this port.
 
     Returns:
         None. Blocks until server shutdown (EOF on stdin).
@@ -47,12 +57,47 @@ def run_server() -> None:
 
     Example:
         >>> # From command line:
-        >>> # ai-session-tracker server
-        >>> run_server()  # Blocks until Ctrl+C or client disconnect
+        >>> # ai-session-tracker server --dashboard-port 8000
+        >>> run_server(dashboard_host="127.0.0.1", dashboard_port=8000)
     """
-    from .server import main
+    import subprocess  # nosec B404
 
-    asyncio.run(main())
+    dashboard_process = None
+
+    # Start dashboard in background if configured
+    if dashboard_host and dashboard_port:
+        import logging
+
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        logger.info(f"Starting dashboard at http://{dashboard_host}:{dashboard_port}")
+
+        # Find the executable
+        executable = sys.executable
+        dashboard_process = subprocess.Popen(  # nosec B603
+            [
+                executable,
+                "-m",
+                "ai_session_tracker_mcp",
+                "dashboard",
+                "--host",
+                dashboard_host,
+                "--port",
+                str(dashboard_port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    try:
+        from .server import main
+
+        asyncio.run(main())
+    finally:
+        # Clean up dashboard process when server exits
+        if dashboard_process:
+            dashboard_process.terminate()
+            dashboard_process.wait(timeout=5)
 
 
 def run_dashboard(host: str = "127.0.0.1", port: int = 8000) -> None:
@@ -290,9 +335,20 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Server command
-    subparsers.add_parser(
+    server_parser = subparsers.add_parser(
         "server",
         help="Run MCP server (stdio mode)",
+    )
+    server_parser.add_argument(
+        "--dashboard-host",
+        default=None,
+        help="Start dashboard on this host (e.g., 127.0.0.1)",
+    )
+    server_parser.add_argument(
+        "--dashboard-port",
+        type=int,
+        default=None,
+        help="Start dashboard on this port (e.g., 8000)",
     )
 
     # Dashboard command
@@ -332,8 +388,13 @@ def main() -> int:
         run_report()
     elif args.command == "init":
         run_init()
+    elif args.command == "server":
+        run_server(
+            dashboard_host=args.dashboard_host,
+            dashboard_port=args.dashboard_port,
+        )
     else:
-        # Default: run server (also handles explicit "server" command)
+        # Default: run server without dashboard
         run_server()
 
     return 0

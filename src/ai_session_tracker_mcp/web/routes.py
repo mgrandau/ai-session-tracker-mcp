@@ -178,7 +178,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:  # noqa: ARG001
 
     # Inline template for simplicity (could move to Jinja2 file)
     html = _render_dashboard_html(overview)
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
 # ============================================================================
@@ -220,7 +220,7 @@ async def sessions_partial() -> HTMLResponse:
     sessions = presenter.get_sessions_list()
 
     html = _render_sessions_table(sessions)
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/partials/roi", response_class=HTMLResponse)
@@ -255,7 +255,7 @@ async def roi_partial() -> HTMLResponse:
     roi = presenter.get_roi_summary()
 
     html = _render_roi_panel(roi)
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/partials/effectiveness", response_class=HTMLResponse)
@@ -290,7 +290,79 @@ async def effectiveness_partial() -> HTMLResponse:
     eff = presenter.get_effectiveness()
 
     html = _render_effectiveness_panel(eff)
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/partials/gaps", response_class=HTMLResponse)
+async def gaps_partial() -> HTMLResponse:
+    """
+    Render the session gaps analysis panel HTML fragment.
+
+    Returns the gaps panel HTML showing inter-session gap analysis
+    with classification breakdown and friction indicators.
+
+    Business context: Gap analysis reveals workflow friction points.
+    Long gaps between sessions may indicate tool usability issues
+    or user disengagement.
+
+    Returns:
+        HTMLResponse containing gaps panel with:
+        - Average gap duration display
+        - Classification breakdown (quick/normal/extended/long)
+        - Friction indicator warnings if detected
+
+    Example:
+        >>> # htmx request from browser
+        >>> # GET /partials/gaps
+        >>> # Returns: <h2>⏱ Session Gaps</h2>... HTML fragment
+    """
+    presenter = get_dashboard_presenter()
+    gaps = presenter.get_session_gaps()
+
+    html = _render_gaps_panel(gaps)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/partials/roi-chart", response_class=HTMLResponse)
+async def roi_chart_partial() -> HTMLResponse:
+    """
+    Render the ROI chart panel HTML fragment for htmx partial updates.
+
+    Returns HTML with an img tag pointing to the ROI chart PNG with a
+    cache-busting timestamp parameter to ensure fresh chart on each refresh.
+
+    Returns:
+        HTMLResponse containing the chart panel HTML with cache-busted img src.
+    """
+    import time
+
+    timestamp = int(time.time())
+    html = f"""<h2>📈 ROI Chart</h2>
+        <div class="chart-container">
+            <img src="/charts/roi.png?t={timestamp}" alt="ROI Chart">
+        </div>"""
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/partials/timeline-chart", response_class=HTMLResponse)
+async def timeline_chart_partial() -> HTMLResponse:
+    """
+    Render the timeline chart panel HTML fragment for htmx partial updates.
+
+    Returns HTML with an img tag pointing to the timeline chart PNG with a
+    cache-busting timestamp parameter to ensure fresh chart on each refresh.
+
+    Returns:
+        HTMLResponse containing the chart panel HTML with cache-busted img src.
+    """
+    import time
+
+    timestamp = int(time.time())
+    html = f"""<h2>📊 Session Timeline</h2>
+        <div class="chart-container">
+            <img src="/charts/timeline.png?t={timestamp}" alt="Timeline Chart">
+        </div>"""
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
 # ============================================================================
@@ -471,6 +543,18 @@ async def api_overview() -> dict[str, object]:
             "distribution": overview.effectiveness.distribution if overview.effectiveness else {},
             "average": overview.effectiveness.average if overview.effectiveness else 0,
         },
+        "session_gaps": {
+            "total_gaps": overview.session_gaps.total_gaps if overview.session_gaps else 0,
+            "average_gap_minutes": (
+                overview.session_gaps.average_gap_minutes if overview.session_gaps else 0
+            ),
+            "by_classification": (
+                overview.session_gaps.by_classification if overview.session_gaps else {}
+            ),
+            "friction_indicators": (
+                overview.session_gaps.friction_indicators if overview.session_gaps else []
+            ),
+        },
     }
 
 
@@ -589,6 +673,7 @@ def _render_dashboard_html(overview: object) -> str:
     sessions_html = _render_sessions_table(ov.sessions)
     roi_html = _render_roi_panel(ov.roi) if ov.roi else ""
     effectiveness_html = _render_effectiveness_panel(ov.effectiveness) if ov.effectiveness else ""
+    gaps_html = _render_gaps_panel(ov.session_gaps) if ov.session_gaps else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -754,35 +839,43 @@ def _render_dashboard_html(overview: object) -> str:
                 {effectiveness_html}
             </div>
 
-            <div class="panel">
-                <h2>📈 ROI Chart</h2>
-                <div class="chart-container">
-                    <img src="/charts/roi.png"
-                         alt="ROI Chart"
-                         hx-get="/charts/roi.png"
-                         hx-trigger="every 60s"
-                         hx-swap="outerHTML">
-                </div>
+            <div class="panel" id="gaps-panel"
+                 hx-get="/partials/gaps"
+                 hx-trigger="every 30s"
+                 hx-swap="innerHTML">
+                {gaps_html}
+            </div>
+        </div>
+
+        <div class="panel" id="roi-chart-panel"
+             style="margin-top: 1rem;"
+             hx-get="/partials/roi-chart"
+             hx-trigger="every 60s"
+             hx-swap="innerHTML">
+            <h2>📈 ROI Chart</h2>
+            <div class="chart-container">
+                <img src="/charts/roi.png" alt="ROI Chart">
+            </div>
+        </div>
+
+        <div class="panel" id="timeline-chart-panel"
+             style="margin-top: 1rem;"
+             hx-get="/partials/timeline-chart"
+             hx-trigger="every 60s"
+             hx-swap="innerHTML">
+            <h2>📊 Session Timeline</h2>
+            <div class="chart-container">
+                <img src="/charts/timeline.png" alt="Timeline Chart">
             </div>
         </div>
 
         <div class="panel" id="sessions-panel"
+             style="margin-top: 1rem; flex: 1; overflow-y: auto; max-height: 50vh;"
              hx-get="/partials/sessions"
              hx-trigger="every 30s"
              hx-swap="innerHTML">
             <h2>📋 Sessions</h2>
             {sessions_html}
-        </div>
-
-        <div class="panel" style="margin-top: 1rem;">
-            <h2>📊 Session Timeline</h2>
-            <div class="chart-container">
-                <img src="/charts/timeline.png"
-                     alt="Timeline Chart"
-                     hx-get="/charts/timeline.png"
-                     hx-trigger="every 60s"
-                     hx-swap="outerHTML">
-            </div>
         </div>
 
         <footer>
@@ -830,8 +923,8 @@ def _render_sessions_table(sessions: Sequence[object]) -> str:
     for s in sessions:
         s_typed: SessionViewModel = s  # type: ignore[assignment]
         rows += f"""<tr>
-            <td>{s_typed.session_id[:8]}...</td>
-            <td>{s_typed.project}</td>
+            <td>{s_typed.session_id[:20]}...</td>
+            <td>{s_typed.start_time_display}</td>
             <td><span class="status-badge {s_typed.status_class}">{s_typed.status}</span></td>
             <td>{s_typed.duration_display}</td>
             <td>{s_typed.interaction_count}</td>
@@ -848,7 +941,7 @@ def _render_sessions_table(sessions: Sequence[object]) -> str:
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Project</th>
+                <th>Start Time</th>
                 <th>Status</th>
                 <th>Duration</th>
                 <th>Interactions</th>
@@ -960,3 +1053,70 @@ def _render_effectiveness_panel(eff: object) -> str:
         <div class="bar-chart" style="margin-top: 1rem;">
             {bars}
         </div>"""
+
+
+def _render_gaps_panel(gaps: object) -> str:
+    """
+    Render session gaps analysis as an HTML panel.
+
+    Creates a formatted panel showing inter-session gap statistics,
+    classification breakdown, and friction indicator warnings.
+
+    Business context: Gap analysis reveals workflow friction. Long gaps
+    may indicate tool difficulty or user disengagement. The panel
+    highlights patterns that need investigation.
+
+    Args:
+        gaps: SessionGapsViewModel object containing gaps list, averages,
+            classification counts, and friction indicators.
+
+    Returns:
+        HTML string containing panel title, average gap display,
+        classification breakdown bars, and friction warnings if any.
+
+    Example:
+        >>> gaps = presenter.get_session_gaps()
+        >>> html = _render_gaps_panel(gaps)
+        >>> '⏱ Session Gaps' in html
+        True
+    """
+    from ..presenters import SessionGapsViewModel
+
+    g: SessionGapsViewModel = gaps  # type: ignore[assignment]
+
+    # Classification breakdown
+    classifications = [
+        ("quick", "⚡ Quick (<5m)", "#22c55e"),
+        ("normal", "✓ Normal (5-30m)", "#3b82f6"),
+        ("extended", "⏸ Extended (30m-2h)", "#f59e0b"),
+        ("long_break", "🔴 Long (2h+)", "#ef4444"),
+    ]
+
+    bars = ""
+    for class_key, label, color in classifications:
+        count = g.classification_count(class_key)
+        width = (count / g.total_gaps * 100) if g.total_gaps > 0 else 0
+        bars += f"""<div class="bar-row">
+            <span class="bar-label" style="width: 140px;">{label}</span>
+            <div class="bar-track">
+                <div class="bar-fill" style="width: {width:.0f}%; background: {color};"></div>
+            </div>
+            <span style="width: 30px; text-align: right;">{count}</span>
+        </div>"""
+
+    # Friction warnings
+    friction_html = ""
+    if g.has_friction:
+        friction_items = "".join(
+            f'<div style="color: var(--warning); font-size: 0.875rem;">⚠️ {indicator}</div>'
+            for indicator in g.friction_indicators
+        )
+        friction_html = f'<div style="margin-top: 1rem;">{friction_items}</div>'
+
+    return f"""<h2>⏱ Session Gaps</h2>
+        <div class="metric neutral">{g.average_display}</div>
+        <div class="metric-label">Average Gap ({g.total_gaps} gaps)</div>
+        <div class="bar-chart" style="margin-top: 1rem;">
+            {bars}
+        </div>
+        {friction_html}"""

@@ -159,7 +159,7 @@ class SessionTrackerServer:
                 "name": "start_ai_session",
                 "description": (
                     "Start a new AI coding session for tracking workflow metrics. "
-                    "⚠️ CALL THIS FIRST at the start of every coding task. "
+                    "CALL THIS FIRST at the start of every coding task. "
                     "Returns session_id for subsequent tool calls."
                 ),
                 "inputSchema": {
@@ -167,10 +167,7 @@ class SessionTrackerServer:
                     "properties": {
                         "session_name": {
                             "type": "string",
-                            "description": (
-                                "Descriptive name for this session "
-                                "(e.g., 'Add user authentication')"
-                            ),
+                            "description": "Descriptive name for this session",
                         },
                         "task_type": {
                             "type": "string",
@@ -179,19 +176,11 @@ class SessionTrackerServer:
                         },
                         "model_name": {
                             "type": "string",
-                            "description": (
-                                "AI model being used "
-                                "(e.g., 'claude-opus-4-20250514', 'gpt-4o', "
-                                "'claude-sonnet-4-20250514')"
-                            ),
+                            "description": "AI model being used (e.g., 'claude-opus-4-20250514')",
                         },
                         "human_time_estimate_minutes": {
                             "type": "number",
-                            "description": (
-                                "Estimated minutes for a human to complete this task. "
-                                "For bugs: use issue tracker estimate. "
-                                "For features: estimate based on complexity."
-                            ),
+                            "description": "Estimated minutes for a human to complete this task",
                         },
                         "estimate_source": {
                             "type": "string",
@@ -303,8 +292,7 @@ class SessionTrackerServer:
                         "issue_type": {
                             "type": "string",
                             "description": (
-                                "Issue category (e.g., 'incorrect_output', "
-                                "'hallucination', 'poor_prompt')"
+                                "Issue category " "(e.g., 'incorrect_output', 'hallucination')"
                             ),
                         },
                         "description": {
@@ -325,7 +313,7 @@ class SessionTrackerServer:
                 "description": (
                     "Calculate and log code quality metrics for modified functions. "
                     "Uses AST analysis for complexity and documentation scoring. "
-                    "Currently supports Python files only."
+                    "Python files only."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -448,20 +436,11 @@ class SessionTrackerServer:
             logger.info(f"Started session: {session.id}")
 
             response_text = f"""
-✅ Session Started Successfully
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Session ID: {session.id}
-Task Type: {session.task_type}
-Model: {session.model_name}
-Human Estimate: {session.human_time_estimate_minutes:.0f} min ({session.estimate_source})
-Started: {session.start_time}
+✅ Session Started: {session.id}
+Type: {session.task_type} | Model: {session.model_name}
+Estimate: {session.human_time_estimate_minutes:.0f}min ({session.estimate_source})
 
-📋 WORKFLOW REMINDER:
-1. ✅ Session started (complete)
-2. ⏳ Do your work (code generation, debugging, etc.)
-3. ⏳ Log interactions: log_ai_interaction()
-4. ⏳ Flag issues if needed: flag_ai_issue()
-5. ⏳ End session when done: end_ai_session()
+⚠️ Log interactions! Call log_ai_interaction(session_id, prompt, rating 1-5) after responses.
 """
             return self._success_response(msg_id, response_text, {"session_id": session.id})
 
@@ -541,12 +520,8 @@ Started: {session.start_time}
             rating = interaction.effectiveness_rating
             stars = "★" * rating + "☆" * (5 - rating)
             response_text = f"""
-📝 Interaction Logged
-━━━━━━━━━━━━━━━━━━━━━━━━
-Rating: {stars} ({rating}/5)
-Iterations: {interaction.iteration_count}
-Session Total: {total} interactions
-Session Avg: {avg_eff:.1f}/5
+📝 Logged: {stars} ({rating}/5) | Iterations: {interaction.iteration_count}
+Session: {total} interactions, avg {avg_eff:.1f}/5
 """
             return self._success_response(msg_id, response_text)
 
@@ -613,19 +588,12 @@ Session Avg: {avg_eff:.1f}/5
 
             logger.info(f"Ended session {session_id}, outcome: {args['outcome']}")
 
+            interactions = session_data.get("total_interactions", 0)
+            avg_eff = session_data.get("avg_effectiveness", 0)
             response_text = f"""
-✅ Session Completed
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Session: {session_id}
-Duration: {duration:.1f} minutes
-Outcome: {args['outcome']}
-
-📊 SESSION METRICS:
-• Interactions: {session_data.get('total_interactions', 0)}
-• Avg Effectiveness: {session_data.get('avg_effectiveness', 0):.1f}/5
-• Issues Flagged: {len(issues)}
-
-💡 View full analytics with get_ai_observability()
+✅ Session Ended: {session_id}
+Duration: {duration:.1f}min | Outcome: {args['outcome']}
+Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
 """
             return self._success_response(msg_id, response_text)
 
@@ -696,15 +664,9 @@ Outcome: {args['outcome']}
             emoji = severity_emoji.get(args["severity"], "⚪")
 
             response_text = f"""
-{emoji} Issue Flagged
-━━━━━━━━━━━━━━━━━━━━━━━━
-Type: {args['issue_type']}
-Severity: {args['severity'].upper()}
+{emoji} Issue Flagged: {args['issue_type']} ({args['severity'].upper()})
 Session: {session_id}
-
-Description: {args['description'][:100]}{'...' if len(args['description']) > 100 else ''}
-
-📋 Continue workflow with log_ai_interaction() or end_ai_session()
+📋 Next: log_ai_interaction() or end_ai_session()
 """
             return self._success_response(msg_id, response_text)
 
@@ -1207,7 +1169,51 @@ Session: {session_id}
                 logger.error(f"Error processing message: {e}")
                 break
 
+        # Close any active sessions on shutdown
+        await self._close_active_sessions()
         logger.info("Server shutting down")
+
+    async def _close_active_sessions(self) -> None:
+        """
+        Close all active sessions on server shutdown.
+
+        Finds any sessions with status 'active' and marks them as completed
+        with outcome 'partial' and a note indicating server shutdown. This
+        ensures no sessions are left orphaned when the server stops.
+
+        Business context: Active sessions left open when the server stops
+        would show incorrect metrics (infinite duration). Auto-closing
+        ensures data integrity and accurate tracking.
+
+        Returns:
+            None. Sessions are updated in storage.
+
+        Example:
+            >>> await server._close_active_sessions()
+            # All active sessions now marked completed
+        """
+        try:
+            sessions = self.storage.load_sessions()
+            active_count = 0
+
+            for session_id, session_data in sessions.items():
+                if session_data.get("status") == "active":
+                    session_data["status"] = "completed"
+                    session_data["end_time"] = datetime.now(UTC).isoformat()
+                    session_data["outcome"] = "partial"
+                    session_data["notes"] = (
+                        session_data.get("notes", "") + " [Auto-closed on server shutdown]"
+                    ).strip()
+                    sessions[session_id] = session_data
+                    active_count += 1
+                    logger.info(f"Auto-closed active session: {session_id}")
+
+            if active_count > 0:
+                self.storage.save_sessions(sessions)
+                logger.info(f"Auto-closed {active_count} active session(s) on shutdown")
+
+        except Exception as e:
+            logger.error(f"Error closing active sessions: {e}")
 
 
 async def main() -> None:

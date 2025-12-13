@@ -137,6 +137,36 @@ class SessionViewModel:
             "abandoned": "status-abandoned",
         }.get(self.status, "status-unknown")
 
+    @property
+    def start_time_display(self) -> str:
+        """
+        Format start time as local HH:MM:SS.
+
+        Parses the ISO 8601 start_time and extracts just the time
+        portion in hours:minutes:seconds format for compact display.
+
+        Business context: Shows when the session started without
+        cluttering the table with full datetime strings.
+
+        Returns:
+            String like "14:30:45" or "—" if no start time.
+
+        Example:
+            >>> session = SessionViewModel(..., start_time="2025-01-01T14:30:45+00:00", ...)
+            >>> session.start_time_display
+            '14:30:45'
+        """
+        if not self.start_time:
+            return "—"
+        try:
+            from datetime import datetime
+
+            start_str = self.start_time.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(start_str)
+            return dt.strftime("%H:%M:%S")
+        except (ValueError, TypeError):
+            return "—"
+
 
 @dataclass
 class ROIViewModel:
@@ -376,6 +406,103 @@ class IssueViewModel:
 
 
 @dataclass
+class SessionGapViewModel:
+    """View model for a single session gap."""
+
+    from_session: str
+    to_session: str
+    duration_minutes: float
+    classification: str
+
+    @property
+    def duration_display(self) -> str:
+        """
+        Format gap duration as human-readable string.
+
+        Converts duration_minutes to compact display. Under 60 minutes shows
+        as minutes, longer durations show as hours.
+
+        Returns:
+            String like "5m", "45m", "2.5h".
+        """
+        if self.duration_minutes < 60:
+            return f"{self.duration_minutes:.0f}m"
+        hours = self.duration_minutes / 60
+        return f"{hours:.1f}h"
+
+    @property
+    def classification_emoji(self) -> str:
+        """
+        Get emoji for gap classification.
+
+        Returns:
+            Emoji indicating gap type: ⚡ quick, ✓ normal, ⏸ extended, 🔴 long.
+        """
+        return {
+            "quick": "⚡",
+            "normal": "✓",
+            "extended": "⏸",
+            "long_break": "🔴",
+        }.get(self.classification, "•")
+
+    @property
+    def classification_class(self) -> str:
+        """
+        Get CSS class for gap classification styling.
+
+        Returns:
+            CSS class name for color-coded display.
+        """
+        return f"gap-{self.classification.replace('_', '-')}"
+
+
+@dataclass
+class SessionGapsViewModel:
+    """View model for session gaps analysis panel."""
+
+    gaps: list[SessionGapViewModel] = field(default_factory=list)
+    total_gaps: int = 0
+    average_gap_minutes: float = 0.0
+    by_classification: dict[str, int] = field(default_factory=dict)
+    friction_indicators: list[str] = field(default_factory=list)
+
+    @property
+    def average_display(self) -> str:
+        """
+        Format average gap as human-readable string.
+
+        Returns:
+            String like "15m" or "1.5h".
+        """
+        if self.average_gap_minutes < 60:
+            return f"{self.average_gap_minutes:.0f}m"
+        hours = self.average_gap_minutes / 60
+        return f"{hours:.1f}h"
+
+    @property
+    def has_friction(self) -> bool:
+        """
+        Check if any friction indicators were detected.
+
+        Returns:
+            True if friction_indicators list is non-empty.
+        """
+        return len(self.friction_indicators) > 0
+
+    def classification_count(self, classification: str) -> int:
+        """
+        Get count for a specific classification.
+
+        Args:
+            classification: One of 'quick', 'normal', 'extended', 'long_break'.
+
+        Returns:
+            Count of gaps with that classification.
+        """
+        return self.by_classification.get(classification, 0)
+
+
+@dataclass
 class DashboardOverview:
     """Complete view model for dashboard overview page."""
 
@@ -383,6 +510,7 @@ class DashboardOverview:
     roi: ROIViewModel | None = None
     effectiveness: EffectivenessViewModel | None = None
     issues: IssueViewModel | None = None
+    session_gaps: SessionGapsViewModel | None = None
     report_text: str = ""
 
 
@@ -465,6 +593,7 @@ class DashboardPresenter:
             roi=self._build_roi(sessions_data, interactions_data),
             effectiveness=self._build_effectiveness(interactions_data),
             issues=self._build_issues(issues_data),
+            session_gaps=self._build_session_gaps(sessions_data),
             report_text=self.statistics.generate_summary_report(
                 sessions_data, interactions_data, issues_data
             ),
@@ -555,6 +684,29 @@ class DashboardPresenter:
         """
         interactions_data = self.storage.load_interactions()
         return self._build_effectiveness(interactions_data)
+
+    def get_session_gaps(self) -> SessionGapsViewModel:
+        """
+        Retrieve session gap analysis as a view model.
+
+        Loads all sessions and calculates inter-session gaps to identify
+        workflow patterns and potential friction points.
+
+        Business context: Gap analysis reveals user engagement patterns.
+        Long gaps may indicate tool friction or workflow interruptions
+        that need investigation.
+
+        Returns:
+            SessionGapsViewModel with gaps list, summary statistics,
+            and friction indicators.
+
+        Example:
+            >>> presenter = DashboardPresenter(storage, stats)
+            >>> gaps = presenter.get_session_gaps()
+            >>> print(f"Avg gap: {gaps.average_display}")
+        """
+        sessions_data = self.storage.load_sessions()
+        return self._build_session_gaps(sessions_data)
 
     def _build_session_list(
         self,
@@ -746,6 +898,52 @@ class DashboardPresenter:
             by_severity=summary["by_severity"],
         )
 
+    def _build_session_gaps(
+        self,
+        sessions: dict[str, Any],
+    ) -> SessionGapsViewModel:
+        """
+        Transform session data into gap analysis view model.
+
+        Calculates time gaps between consecutive sessions using the
+        statistics engine, then packages into a view model with
+        classification breakdowns and friction indicators.
+
+        Business context: Gap analysis reveals workflow friction.
+        Long or frequent gaps may indicate tool usability issues
+        or user disengagement patterns.
+
+        Args:
+            sessions: Dict of session_id -> session_data with timestamps.
+
+        Returns:
+            SessionGapsViewModel with gaps list, averages, classification
+            counts, and friction indicators.
+
+        Example:
+            >>> gaps_model = presenter._build_session_gaps(sessions)
+            >>> print(f"Avg gap: {gaps_model.average_display}")
+        """
+        gap_data = self.statistics.calculate_session_gaps(sessions)
+
+        gap_models = [
+            SessionGapViewModel(
+                from_session=g["from_session"],
+                to_session=g["to_session"],
+                duration_minutes=g["duration_minutes"],
+                classification=g["classification"],
+            )
+            for g in gap_data["gaps"]
+        ]
+
+        return SessionGapsViewModel(
+            gaps=gap_models,
+            total_gaps=gap_data["summary"]["total_gaps"],
+            average_gap_minutes=gap_data["summary"]["average_gap_minutes"],
+            by_classification=gap_data["summary"]["by_classification"],
+            friction_indicators=gap_data["friction_indicators"],
+        )
+
 
 class ChartPresenter:
     """
@@ -851,15 +1049,14 @@ class ChartPresenter:
 
     def render_roi_chart(self) -> bytes:
         """
-        Render ROI comparison as a vertical bar chart PNG.
+        Render time comparison as a vertical bar chart PNG.
 
         Creates a matplotlib chart comparing three values: human baseline
-        cost, AI actual cost, and savings. Bars are color-coded (gray for
-        baseline, blue for AI cost, green for savings) with value labels.
+        time estimate, AI actual time, and human oversight time. Bars are
+        color-coded with value labels showing hours.
 
-        Business context: The ROI chart is the primary visual for executive
-        communication. It shows at a glance the financial benefit of AI
-        tools and is suitable for presentations and reports.
+        Business context: The time chart shows at a glance how much time
+        AI saves compared to human estimates, and the oversight required.
 
         Returns:
             PNG image as bytes, suitable for HTTP response or file save.
@@ -885,32 +1082,43 @@ class ChartPresenter:
         sessions = self.storage.load_sessions()
         interactions = self.storage.load_interactions()
         roi = self.statistics.calculate_roi_metrics(sessions, interactions)
+        gaps = self.statistics.calculate_session_gaps(sessions)
 
         fig, ax = plt.subplots(figsize=(6, 4))
 
-        categories = ["Human\nBaseline", "AI\nActual", "Savings"]
-        values = [
-            roi["cost_metrics"]["human_baseline_cost"],
-            roi["cost_metrics"]["total_ai_cost"],
-            roi["cost_metrics"]["cost_saved"],
-        ]
-        colors = ["#64748b", "#3b82f6", "#22c55e"]
+        # Time metrics: human estimate, AI actual, oversight
+        human_hours = roi["time_metrics"]["estimated_human_hours"]
+        ai_hours = roi["time_metrics"]["total_ai_hours"]
+
+        # Oversight = AI time + quick/normal gaps (not extended or long_break)
+        oversight_gap_minutes = sum(
+            g["duration_minutes"]
+            for g in gaps["gaps"]
+            if g["classification"] in ("quick", "normal")
+        )
+        oversight_hours = ai_hours + (oversight_gap_minutes / 60.0)
+
+        categories = ["Human\nEstimate", "AI\nActual", "Human\nOversight"]
+        values = [human_hours, ai_hours, oversight_hours]
+        colors = ["#64748b", "#3b82f6", "#f59e0b"]
 
         bars = ax.bar(categories, values, color=colors)
 
         # Add value labels on bars
         for bar, val in zip(bars, values, strict=True):
+            label = f"{val:.1f}h" if val >= 1 else f"{val * 60:.0f}m"
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
-                f"${val:,.0f}",
+                label,
                 ha="center",
                 va="bottom",
                 fontsize=10,
             )
 
-        ax.set_ylabel("Cost ($)")
-        ax.set_title(f"ROI Summary ({roi['cost_metrics']['roi_percentage']:.0f}%)")
+        ax.set_ylabel("Time (hours)")
+        time_saved = human_hours - oversight_hours
+        ax.set_title(f"Time Comparison (Saved: {time_saved:.1f}h)")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
@@ -996,7 +1204,7 @@ class ChartPresenter:
             ax.set_title("Session Timeline")
             ax.set_xticks(range(len(dates)))
             ax.set_xticklabels(
-                [d.strftime("%m/%d") for d in dates],
+                [d.strftime("%H:%M:%S") for d in dates],
                 rotation=45,
                 ha="right",
             )

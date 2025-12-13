@@ -3,7 +3,9 @@
     "ai-session-tracker": {
       "command": "/home/mark/src/ai-session-tracker-mcp/.venv/bin/ai-session-tracker",
       "args": [
-        "server"
+        "server",
+        "--dashboard-host", "127.0.0.1",
+        "--dashboard-port", "8000"
       ]
     },
     "docscope-mcp": {
