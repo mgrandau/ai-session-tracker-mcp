@@ -433,6 +433,48 @@ class SessionTrackerServer:
     # TOOL HANDLERS
     # =========================================================================
 
+    def _auto_close_active_sessions(self) -> list[str]:
+        """
+        Auto-close any active sessions before starting a new one.
+
+        Finds all sessions with status 'active' and closes them with
+        outcome 'partial' and a note indicating they were auto-closed.
+        This ensures only one session is ever active at a time.
+
+        Business context: Users may forget to end sessions or sessions
+        may not be closed due to errors/crashes. Auto-closing orphaned
+        sessions ensures accurate metrics and prevents confusion.
+
+        Returns:
+            list[str]: List of session IDs that were auto-closed.
+
+        Example:
+            >>> closed = server._auto_close_active_sessions()
+            >>> print(f"Auto-closed {len(closed)} sessions")
+        """
+        closed_sessions = []
+        try:
+            sessions = self.storage.load_sessions()
+            for session_id, session_data in sessions.items():
+                if session_data.get("status") == "active":
+                    session_data["status"] = "completed"
+                    session_data["end_time"] = datetime.now(UTC).isoformat()
+                    session_data["outcome"] = "partial"
+                    session_data["notes"] = (
+                        session_data.get("notes", "") + " [Auto-closed: new session started]"
+                    ).strip()
+                    sessions[session_id] = session_data
+                    closed_sessions.append(session_id)
+                    logger.warning(f"Auto-closed active session: {session_id}")
+
+            if closed_sessions:
+                self.storage.save_sessions(sessions)
+
+        except Exception as e:
+            logger.error(f"Error auto-closing sessions: {e}")
+
+        return closed_sessions
+
     async def _handle_start_session(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
         """
         Handle start_ai_session tool to begin a new tracking session.
@@ -441,6 +483,9 @@ class SessionTrackerServer:
         storage, and returns a formatted response with the session ID and
         workflow reminder. This should be the first tool called in any
         AI-assisted task.
+
+        Automatically closes any previously active sessions before creating
+        the new one to ensure only one session is active at a time.
 
         Business context: Session creation is the entry point for all
         tracking. The generated session_id is used in all subsequent
@@ -473,6 +518,9 @@ class SessionTrackerServer:
             ... }, msg_id=1)
         """
         try:
+            # Auto-close any active sessions first
+            auto_closed = self._auto_close_active_sessions()
+
             session = Session.create(
                 name=args["session_name"],
                 task_type=args["task_type"],
@@ -488,14 +536,26 @@ class SessionTrackerServer:
 
             logger.info(f"Started session: {session.id}")
 
+            # Build response with optional auto-close notice
+            auto_close_notice = ""
+            if auto_closed:
+                closed_ids = ", ".join(auto_closed)
+                auto_close_notice = (
+                    f"\n⚠️ Auto-closed {len(auto_closed)} previous session(s): {closed_ids}\n"
+                )
+
             response_text = f"""
 ✅ Session Started: {session.id}
 Type: {session.task_type} | Model: {session.model_name}
 Estimate: {session.human_time_estimate_minutes:.0f}min ({session.estimate_source})
-
+{auto_close_notice}
 ⚠️ Log interactions! Call log_ai_interaction(session_id, prompt, rating 1-5) after responses.
 """
-            return self._success_response(msg_id, response_text, {"session_id": session.id})
+            return self._success_response(
+                msg_id,
+                response_text,
+                {"session_id": session.id, "auto_closed_sessions": auto_closed},
+            )
 
         except Exception as e:
             logger.error(f"Error starting session: {e}")

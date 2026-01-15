@@ -98,6 +98,19 @@
                 "focus": false,
                 "panel": "shared"
             }
+        },
+        {
+            "label": "Open GitHub Issues",
+            "command": "${input:openGitHubIssues}",
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "openGitHubIssues",
+            "type": "command",
+            "command": "simpleBrowser.show",
+            "args": "https://github.com/mgrandau/ai-session-tracker-mcp/issues"
         }
     ]
 }

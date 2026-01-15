@@ -867,6 +867,227 @@ class TestRunInstall:
         config = json.loads(config_content)
         assert config["servers"]["ai-session-tracker"]["command"] == sys.executable
 
+    def test_run_install_prompts_only_skips_mcp_config(self, mock_fs: MockFileSystem) -> None:
+        """Verifies --prompts-only flag skips MCP configuration.
+
+        Tests that when prompts_only=True, install only copies agent files
+        and does not create/modify mcp.json.
+
+        Business context:
+        Users may want to only update agent files without touching MCP
+        configuration, especially when sharing prompts across teams.
+
+        Arrangement:
+        Set up bundled agent files in mock filesystem.
+
+        Action:
+        Call run_install with prompts_only=True.
+
+        Assertion Strategy:
+        Validates mcp.json was not created and agent files were copied.
+
+        Testing Principle:
+        Validates flag correctly skips MCP configuration.
+        """
+        from ai_session_tracker_mcp.cli import run_install
+
+        # Set up bundled agent files
+        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test")
+
+        run_install(
+            filesystem=mock_fs,
+            cwd="/project",
+            package_dir="/pkg",
+            prompts_only=True,
+        )
+
+        # Verify mcp.json was NOT created
+        assert not mock_fs.exists("/project/.vscode/mcp.json")
+
+        # Verify agent files were copied
+        assert mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+
+    def test_run_install_mcp_only_skips_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies --mcp-only flag skips agent file installation.
+
+        Tests that when mcp_only=True, install only creates MCP config
+        and does not copy agent files.
+
+        Business context:
+        Users may already have custom agent files and only want to
+        configure the MCP server.
+
+        Arrangement:
+        Set up bundled agent files in mock filesystem.
+
+        Action:
+        Call run_install with mcp_only=True.
+
+        Assertion Strategy:
+        Validates mcp.json was created but agent files were not copied.
+
+        Testing Principle:
+        Validates flag correctly skips agent files.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_install
+
+        # Set up bundled agent files
+        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test")
+
+        run_install(
+            filesystem=mock_fs,
+            cwd="/project",
+            package_dir="/pkg",
+            mcp_only=True,
+        )
+
+        # Verify mcp.json was created
+        assert mock_fs.exists("/project/.vscode/mcp.json")
+        config_content = mock_fs.get_file("/project/.vscode/mcp.json")
+        config = json.loads(config_content)
+        assert "ai-session-tracker" in config["servers"]
+
+        # Verify agent files were NOT copied
+        assert not mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+
+    def test_run_install_global_flag_linux(self, mock_fs: MockFileSystem) -> None:
+        """Verifies --global flag installs to user's global VS Code settings.
+
+        Tests that when global_install=True, install creates config in
+        the user's global VS Code settings directory instead of project.
+
+        Business context:
+        Users may want to enable session tracking globally for all
+        projects without per-project configuration.
+
+        Arrangement:
+        Mock home directory path.
+
+        Action:
+        Call run_install with global_install=True.
+
+        Assertion Strategy:
+        Validates mcp.json was created in global settings path.
+
+        Testing Principle:
+        Validates global install target directory.
+        """
+        import json
+
+        from ai_session_tracker_mcp.cli import run_install
+
+        with patch("pathlib.Path.home", return_value=MagicMock(__str__=lambda _: "/home/user")):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                global_install=True,
+            )
+
+        # Verify global mcp.json was created (Linux path)
+        global_config_path = "/home/user/.config/Code/User/mcp.json"
+        assert mock_fs.exists(global_config_path)
+        config_content = mock_fs.get_file(global_config_path)
+        config = json.loads(config_content)
+        assert "ai-session-tracker" in config["servers"]
+
+    def test_install_command_parses_global_flag(self) -> None:
+        """Verifies install command parses --global flag correctly.
+
+        Tests that the CLI argument parser accepts and passes the
+        --global flag to run_install.
+
+        Business context:
+        CLI needs to expose global installation option to users.
+
+        Arrangement:
+        Mock run_install to capture arguments.
+
+        Action:
+        Call main() with install --global.
+
+        Assertion Strategy:
+        Validates run_install was called with global_install=True.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_install") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "install", "--global"]),
+        ):
+            main()
+            mock_run.assert_called_once_with(
+                global_install=True,
+                prompts_only=False,
+                mcp_only=False,
+            )
+
+    def test_install_command_parses_prompts_only_flag(self) -> None:
+        """Verifies install command parses --prompts-only flag correctly.
+
+        Tests that the CLI argument parser accepts and passes the
+        --prompts-only flag to run_install.
+
+        Business context:
+        CLI needs to expose prompts-only option to users.
+
+        Arrangement:
+        Mock run_install to capture arguments.
+
+        Action:
+        Call main() with install --prompts-only.
+
+        Assertion Strategy:
+        Validates run_install was called with prompts_only=True.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_install") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "install", "--prompts-only"]),
+        ):
+            main()
+            mock_run.assert_called_once_with(
+                global_install=False,
+                prompts_only=True,
+                mcp_only=False,
+            )
+
+    def test_install_command_parses_mcp_only_flag(self) -> None:
+        """Verifies install command parses --mcp-only flag correctly.
+
+        Tests that the CLI argument parser accepts and passes the
+        --mcp-only flag to run_install.
+
+        Business context:
+        CLI needs to expose mcp-only option to users.
+
+        Arrangement:
+        Mock run_install to capture arguments.
+
+        Action:
+        Call main() with install --mcp-only.
+
+        Assertion Strategy:
+        Validates run_install was called with mcp_only=True.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_install") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "install", "--mcp-only"]),
+        ):
+            main()
+            mock_run.assert_called_once_with(
+                global_install=False,
+                prompts_only=False,
+                mcp_only=True,
+            )
+
 
 class TestServerCommandWithDashboard:
     """Tests for server command with dashboard options."""

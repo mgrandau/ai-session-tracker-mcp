@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import subprocess  # nosec B404
 import sys
 from collections.abc import Callable
@@ -424,6 +425,10 @@ def run_install(
     filesystem: FileSystem | None = None,
     cwd: str | None = None,
     package_dir: str | None = None,
+    *,
+    global_install: bool = False,
+    prompts_only: bool = False,
+    mcp_only: bool = False,
 ) -> None:
     """
     Install AI Session Tracker for the current project.
@@ -446,6 +451,11 @@ def run_install(
             RealFileSystem for production use.
         cwd: Optional working directory. Defaults to current directory.
         package_dir: Optional package directory for bundled files.
+        global_install: If True, install to user's global VS Code settings
+            instead of project .vscode directory.
+        prompts_only: If True, only install agent files (chatmodes/instructions),
+            skip MCP configuration.
+        mcp_only: If True, only install MCP configuration, skip agent files.
 
     Returns:
         None. Progress messages printed to stdout.
@@ -468,8 +478,20 @@ def run_install(
     working_dir = cwd or str(Path.cwd())
     pkg_dir = package_dir or str(Path(__file__).parent)
 
-    # Build paths using constants
-    vscode_dir = _build_path(working_dir, VSCODE_DIR)
+    # Determine target directory for MCP config
+    if global_install:
+        # Use VS Code user settings directory
+        home = str(Path.home())
+        if os.name == "nt":  # Windows
+            vscode_dir = _build_path(home, "AppData", "Roaming", "Code", "User")
+        elif sys.platform == "darwin":  # macOS
+            vscode_dir = _build_path(home, "Library", "Application Support", "Code", "User")
+        else:  # Linux
+            vscode_dir = _build_path(home, ".config", "Code", "User")
+        _log(f"Installing globally to: {vscode_dir}", emoji="🌐")
+    else:
+        vscode_dir = _build_path(working_dir, VSCODE_DIR)
+
     config_path = _build_path(vscode_dir, CONFIG_FILE)
     bundled_dir = _build_path(pkg_dir, AGENT_FILES_DIR)
     github_dir = _build_path(working_dir, GITHUB_DIR)
@@ -490,33 +512,37 @@ def run_install(
             "args": ["server"],
         }
 
-    # Load or create config
-    config = _load_or_create_config(fs, config_path)
+    # Install MCP configuration unless prompts_only is set
+    if not prompts_only:
+        # Load or create config
+        config = _load_or_create_config(fs, config_path)
 
-    # Check if already installed
-    if SERVER_NAME in config["servers"]:
-        existing = config["servers"][SERVER_NAME]
-        if existing == server_config:
-            _log(f"{SERVER_NAME} already installed and up to date", emoji="✅")
+        # Check if already installed
+        if SERVER_NAME in config["servers"]:
+            existing = config["servers"][SERVER_NAME]
+            if existing == server_config:
+                _log(f"{SERVER_NAME} already installed and up to date", emoji="✅")
+            else:
+                _log(f"Updating {SERVER_NAME} configuration", emoji="🔄")
+                config["servers"][SERVER_NAME] = server_config
         else:
-            _log(f"Updating {SERVER_NAME} configuration", emoji="🔄")
+            _log(f"Adding {SERVER_NAME} to MCP servers", emoji="➕")
             config["servers"][SERVER_NAME] = server_config
-    else:
-        _log(f"Adding {SERVER_NAME} to MCP servers", emoji="➕")
-        config["servers"][SERVER_NAME] = server_config
 
-    # Create .vscode directory if needed
-    fs.makedirs(vscode_dir, exist_ok=True)
+        # Create .vscode directory if needed
+        fs.makedirs(vscode_dir, exist_ok=True)
 
-    # Write config
-    fs.write_text(config_path, json.dumps(config, indent=2))
+        # Write config
+        fs.write_text(config_path, json.dumps(config, indent=2))
 
-    # Copy agent files to .github/
-    _copy_agent_files(fs, bundled_dir, github_dir, working_dir)
+    # Copy agent files to .github/ unless mcp_only is set
+    if not mcp_only:
+        _copy_agent_files(fs, bundled_dir, github_dir, working_dir)
 
     _log(f"Successfully installed {SERVER_NAME}", emoji="✅")
-    _log(f"Config: {config_path}")
-    _log(f"Command: {server_config['command']} {' '.join(server_config['args'])}")
+    if not prompts_only:
+        _log(f"Config: {config_path}")
+        _log(f"Command: {server_config['command']} {' '.join(server_config['args'])}")
 
 
 def main() -> int:
@@ -604,9 +630,25 @@ def main() -> int:
     )
 
     # Install command
-    subparsers.add_parser(
+    install_parser = subparsers.add_parser(
         "install",
         help="Create .vscode/mcp.json for this project",
+    )
+    install_parser.add_argument(
+        "--global",
+        dest="global_install",
+        action="store_true",
+        help="Install to user's global VS Code settings instead of project",
+    )
+    install_parser.add_argument(
+        "--prompts-only",
+        action="store_true",
+        help="Only install agent files (chatmodes/instructions), skip MCP config",
+    )
+    install_parser.add_argument(
+        "--mcp-only",
+        action="store_true",
+        help="Only install MCP configuration, skip agent files",
     )
 
     args = parser.parse_args()
@@ -616,7 +658,11 @@ def main() -> int:
     elif args.command == "report":
         run_report()
     elif args.command == "install":
-        run_install()
+        run_install(
+            global_install=args.global_install,
+            prompts_only=args.prompts_only,
+            mcp_only=args.mcp_only,
+        )
     elif args.command == "server":
         run_server(
             dashboard_host=args.dashboard_host,

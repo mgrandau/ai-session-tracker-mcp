@@ -665,6 +665,189 @@ class TestStartSession:
         session = server.storage.get_session(session_id)
         assert session["context"] == "Working on auth"
 
+    @pytest.mark.asyncio
+    async def test_auto_closes_previous_active_session(self, server: SessionTrackerServer) -> None:
+        """Verifies start_ai_session auto-closes previous active sessions.
+
+        Tests that when a new session starts, any existing active sessions
+        are automatically closed with outcome 'partial'.
+
+        Business context:
+        Users may forget to end sessions or sessions may not be closed due
+        to errors/crashes. Auto-closing ensures only one session is active
+        at a time, preventing confusion and incorrect metrics.
+
+        Arrangement:
+        Create an active session directly in storage.
+
+        Action:
+        Call _handle_start_session to create a new session.
+
+        Assertion Strategy:
+        Validates the previous session is:
+        - Status changed to 'completed'
+        - Outcome set to 'partial'
+        - Notes include '[Auto-closed: new session started]'
+        And the new session is created with active status.
+
+        Testing Principle:
+        Validates automatic cleanup of orphaned sessions.
+        """
+        # Create an existing active session
+        sessions = server.storage.load_sessions()
+        sessions["old_session"] = {
+            "id": "old_session",
+            "session_name": "Previous Session",
+            "task_type": "code_generation",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "notes": "",
+        }
+        server.storage.save_sessions(sessions)
+
+        # Start a new session
+        result = await server._handle_start_session(
+            {
+                "session_name": "New Session",
+                "task_type": "debugging",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 30,
+                "estimate_source": "manual",
+            },
+            1,
+        )
+
+        # Verify the old session was auto-closed
+        old_session = server.storage.get_session("old_session")
+        assert old_session is not None
+        assert old_session["status"] == "completed"
+        assert old_session["outcome"] == "partial"
+        assert "[Auto-closed: new session started]" in old_session["notes"]
+        assert "end_time" in old_session
+
+        # Verify the new session was created
+        new_session_id = result["result"]["session_id"]
+        new_session = server.storage.get_session(new_session_id)
+        assert new_session is not None
+        assert new_session["status"] == "active"
+
+        # Verify response includes auto_closed_sessions
+        assert "auto_closed_sessions" in result["result"]
+        assert "old_session" in result["result"]["auto_closed_sessions"]
+
+    @pytest.mark.asyncio
+    async def test_auto_close_multiple_active_sessions(self, server: SessionTrackerServer) -> None:
+        """Verifies start_ai_session auto-closes all active sessions.
+
+        Tests that multiple orphaned active sessions are all closed when
+        a new session starts.
+
+        Business context:
+        Edge case where multiple sessions were left active due to
+        repeated failures or bugs. All must be cleaned up.
+
+        Arrangement:
+        Create two active sessions directly in storage.
+
+        Action:
+        Call _handle_start_session to create a new session.
+
+        Assertion Strategy:
+        Validates both previous sessions are closed with appropriate
+        status, outcome, and notes.
+
+        Testing Principle:
+        Validates bulk cleanup of multiple orphaned sessions.
+        """
+        # Create multiple active sessions
+        sessions = server.storage.load_sessions()
+        sessions["session_1"] = {
+            "id": "session_1",
+            "session_name": "Session 1",
+            "task_type": "code_generation",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "notes": "",
+        }
+        sessions["session_2"] = {
+            "id": "session_2",
+            "session_name": "Session 2",
+            "task_type": "debugging",
+            "status": "active",
+            "start_time": "2024-01-02T00:00:00+00:00",
+            "notes": "Some existing notes",
+        }
+        server.storage.save_sessions(sessions)
+
+        # Start a new session
+        result = await server._handle_start_session(
+            {
+                "session_name": "New Session",
+                "task_type": "testing",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 60,
+                "estimate_source": "issue_tracker",
+            },
+            1,
+        )
+
+        # Verify both old sessions were auto-closed
+        session_1 = server.storage.get_session("session_1")
+        session_2 = server.storage.get_session("session_2")
+
+        assert session_1["status"] == "completed"
+        assert session_1["outcome"] == "partial"
+        assert "[Auto-closed: new session started]" in session_1["notes"]
+
+        assert session_2["status"] == "completed"
+        assert session_2["outcome"] == "partial"
+        assert "Some existing notes" in session_2["notes"]
+        assert "[Auto-closed: new session started]" in session_2["notes"]
+
+        # Verify response includes both auto-closed sessions
+        auto_closed = result["result"]["auto_closed_sessions"]
+        assert len(auto_closed) == 2
+        assert "session_1" in auto_closed
+        assert "session_2" in auto_closed
+
+    @pytest.mark.asyncio
+    async def test_no_auto_close_when_no_active_sessions(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies start_ai_session works when no active sessions exist.
+
+        Tests the normal case where there are no orphaned sessions to close.
+
+        Business context:
+        Common case after proper session management. Should not show
+        auto-close warnings when none are needed.
+
+        Arrangement:
+        Ensure storage is empty or only has completed sessions.
+
+        Action:
+        Call _handle_start_session to create a new session.
+
+        Assertion Strategy:
+        Validates auto_closed_sessions is an empty list.
+
+        Testing Principle:
+        Validates normal operation without false positives.
+        """
+        result = await server._handle_start_session(
+            {
+                "session_name": "First Session",
+                "task_type": "code_generation",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 30,
+                "estimate_source": "manual",
+            },
+            1,
+        )
+
+        # Verify no sessions were auto-closed
+        assert result["result"]["auto_closed_sessions"] == []
+
 
 class TestLogInteraction:
     """Tests for log_ai_interaction handler."""

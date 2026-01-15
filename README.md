@@ -51,6 +51,34 @@ This creates:
 - `.github/instructions/` — AI instruction files
 - `.github/chatmodes/` — VS Code chat mode definitions
 
+### Full MCP Configuration Template
+
+For manual configuration or to enable all features, use this template in `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "ai-session-tracker": {
+      "command": "ai-session-tracker",
+      "args": [
+        "server",
+        "--dashboard-host", "127.0.0.1",
+        "--dashboard-port", "8050"
+      ]
+    }
+  }
+}
+```
+
+**Available server arguments:**
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--dashboard-host` | Host for embedded web dashboard | *(disabled)* |
+| `--dashboard-port` | Port for embedded web dashboard | *(disabled)* |
+
+> 💡 **Tip:** Enable `--dashboard-host` and `--dashboard-port` to get a live web dashboard at `http://127.0.0.1:8050` while the MCP server runs.
+
 ---
 
 ## 🚀 Quick Start
