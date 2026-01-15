@@ -26,7 +26,7 @@ class TestConfigConstants:
             pytest.param("WORKING_HOURS_PER_MONTH", 160.0, id="working_hours"),
             pytest.param("MCP_VERSION", "2024-11-05", id="mcp_version"),
             pytest.param("SERVER_NAME", "ai-session-tracker", id="server_name"),
-            pytest.param("SERVER_VERSION", "1.0.0", id="server_version"),
+            pytest.param("SERVER_VERSION", "1.0.2", id="server_version"),
         ],
     )
     def test_config_constant_value(self, attr_name: str, expected_value: object) -> None:

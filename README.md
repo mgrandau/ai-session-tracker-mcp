@@ -133,7 +133,35 @@ ai-session-tracker report
 
 # Install MCP config and agent files to current project
 ai-session-tracker install
+
+# Install as a system service (auto-start on login)
+ai-session-tracker install --service
 ```
+
+---
+
+## 🔄 Background Service
+
+Install the MCP server as a system service to run automatically at login:
+
+```bash
+# Install as service (creates systemd user service on Linux, launchd agent on macOS, Task Scheduler on Windows)
+ai-session-tracker install --service
+
+# Manage the service
+ai-session-tracker service start     # Start the service
+ai-session-tracker service stop      # Stop the service
+ai-session-tracker service status    # Check service status
+ai-session-tracker service uninstall # Remove the service
+```
+
+### Platform Support
+
+| Platform | Service Type | Location |
+|----------|--------------|----------|
+| Linux | systemd user service | `~/.config/systemd/user/ai-session-tracker.service` |
+| macOS | launchd user agent | `~/Library/LaunchAgents/com.ai-session-tracker.mcp.plist` |
+| Windows | Task Scheduler | `AISessionTracker` scheduled task |
 
 ---
 

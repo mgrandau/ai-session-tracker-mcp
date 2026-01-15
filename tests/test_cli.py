@@ -1024,6 +1024,7 @@ class TestRunInstall:
                 global_install=True,
                 prompts_only=False,
                 mcp_only=False,
+                service=False,
             )
 
     def test_install_command_parses_prompts_only_flag(self) -> None:
@@ -1055,6 +1056,7 @@ class TestRunInstall:
                 global_install=False,
                 prompts_only=True,
                 mcp_only=False,
+                service=False,
             )
 
     def test_install_command_parses_mcp_only_flag(self) -> None:
@@ -1086,54 +1088,300 @@ class TestRunInstall:
                 global_install=False,
                 prompts_only=False,
                 mcp_only=True,
+                service=False,
             )
 
 
-class TestServerCommandWithDashboard:
-    """Tests for server command with dashboard options."""
+class TestInstallServiceFlag:
+    """Tests for install command --service flag."""
 
-    def test_server_command_with_dashboard_options(self) -> None:
-        """Verifies server command accepts dashboard host/port options.
+    def test_install_command_parses_service_flag(self) -> None:
+        """Verifies install command parses --service flag correctly.
 
-        Tests that the CLI parses dashboard configuration options
-        and passes them to run_server.
+        Tests that the CLI argument parser accepts and passes the
+        --service flag to run_install.
 
         Business context:
-        Advanced users may want to start dashboard alongside server.
-        CLI provides options for this integrated setup.
+        CLI needs to expose service installation option to users.
 
         Arrangement:
-        1. Mock run_server to capture arguments.
-        2. Mock sys.argv with dashboard options.
+        Mock run_install to capture arguments.
 
         Action:
-        Call main() with server and dashboard options.
+        Call main() with install --service.
 
         Assertion Strategy:
-        Validates run_server called with dashboard_host and dashboard_port.
+        Validates run_install was called with service=True.
         """
         from ai_session_tracker_mcp.cli import main
 
         with (
-            patch("ai_session_tracker_mcp.cli.run_server") as mock_run,
-            patch.object(
-                sys,
-                "argv",
-                [
-                    "ai-session-tracker",
-                    "server",
-                    "--dashboard-host",
-                    "0.0.0.0",
-                    "--dashboard-port",
-                    "9000",
-                ],
-            ),
+            patch("ai_session_tracker_mcp.cli.run_install") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "install", "--service"]),
         ):
             main()
             mock_run.assert_called_once_with(
-                dashboard_host="0.0.0.0",
-                dashboard_port=9000,
+                global_install=False,
+                prompts_only=False,
+                mcp_only=False,
+                service=True,
             )
+
+
+class TestServiceCommand:
+    """Tests for service subcommand."""
+
+    def test_service_start_command(self) -> None:
+        """Verifies 'service start' subcommand works correctly.
+
+        Tests that the service start command routes to run_service
+        function with start action.
+
+        Business context:
+        Users need to start the background service.
+
+        Arrangement:
+        Mock run_service to capture invocation.
+
+        Action:
+        Call main() with service start argument.
+
+        Assertion Strategy:
+        Validates run_service was called with action='start'.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_service") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "service", "start"]),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with("start")
+            assert result == 0
+
+    def test_service_stop_command(self) -> None:
+        """Verifies 'service stop' subcommand works correctly.
+
+        Tests that the service stop command routes to run_service
+        function with stop action.
+
+        Business context:
+        Users need to stop the background service.
+
+        Arrangement:
+        Mock run_service to capture invocation.
+
+        Action:
+        Call main() with service stop argument.
+
+        Assertion Strategy:
+        Validates run_service was called with action='stop'.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_service") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "service", "stop"]),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with("stop")
+            assert result == 0
+
+    def test_service_status_command(self) -> None:
+        """Verifies 'service status' subcommand works correctly.
+
+        Tests that the service status command routes to run_service
+        function with status action.
+
+        Business context:
+        Users need to check service status.
+
+        Arrangement:
+        Mock run_service to capture invocation.
+
+        Action:
+        Call main() with service status argument.
+
+        Assertion Strategy:
+        Validates run_service was called with action='status'.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_service") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "service", "status"]),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with("status")
+            assert result == 0
+
+    def test_service_uninstall_command(self) -> None:
+        """Verifies 'service uninstall' subcommand works correctly.
+
+        Tests that the service uninstall command routes to run_service
+        function with uninstall action.
+
+        Business context:
+        Users need to remove the service.
+
+        Arrangement:
+        Mock run_service to capture invocation.
+
+        Action:
+        Call main() with service uninstall argument.
+
+        Assertion Strategy:
+        Validates run_service was called with action='uninstall'.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_service") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "service", "uninstall"]),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with("uninstall")
+            assert result == 0
+
+
+class TestRunService:
+    """Tests for run_service function."""
+
+    def test_run_service_start_success(self) -> None:
+        """Verifies run_service start returns 0 on success.
+
+        Tests that starting a service successfully returns exit code 0.
+
+        Business context:
+        Service start should indicate success via exit code.
+
+        Arrangement:
+        Mock service manager with successful start.
+
+        Action:
+        Call run_service with 'start' action.
+
+        Assertion Strategy:
+        Validates return code is 0.
+        """
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.start.return_value = True
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("start")
+            assert result == 0
+            mock_manager.start.assert_called_once()
+
+    def test_run_service_start_failure(self) -> None:
+        """Verifies run_service start returns 1 on failure.
+
+        Tests that failing to start service returns exit code 1.
+
+        Business context:
+        Service start failure should indicate error via exit code.
+
+        Arrangement:
+        Mock service manager with failed start.
+
+        Action:
+        Call run_service with 'start' action.
+
+        Assertion Strategy:
+        Validates return code is 1.
+        """
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.start.return_value = False
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("start")
+            assert result == 1
+
+    def test_run_service_stop_success(self) -> None:
+        """Verifies run_service stop returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.stop.return_value = True
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("stop")
+            assert result == 0
+            mock_manager.stop.assert_called_once()
+
+    def test_run_service_status_returns_info(self) -> None:
+        """Verifies run_service status returns status information."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.status.return_value = {
+            "installed": True,
+            "running": True,
+            "status": "Service is active",
+        }
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("status")
+            assert result == 0
+            mock_manager.status.assert_called_once()
+
+    def test_run_service_uninstall_success(self) -> None:
+        """Verifies run_service uninstall returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.uninstall.return_value = True
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("uninstall")
+            assert result == 0
+            mock_manager.uninstall.assert_called_once()
+
+    def test_run_service_unsupported_platform(self) -> None:
+        """Verifies run_service handles unsupported platform."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            side_effect=NotImplementedError("Unsupported"),
+        ):
+            result = run_service("status")
+            assert result == 1
+
+    def test_run_service_unknown_action(self) -> None:
+        """Verifies run_service handles unknown action."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("invalid")
+            assert result == 1
 
 
 class TestMainModule:

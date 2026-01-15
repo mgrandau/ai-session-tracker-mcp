@@ -429,6 +429,7 @@ def run_install(
     global_install: bool = False,
     prompts_only: bool = False,
     mcp_only: bool = False,
+    service: bool = False,
 ) -> None:
     """
     Install AI Session Tracker for the current project.
@@ -456,6 +457,7 @@ def run_install(
         prompts_only: If True, only install agent files (chatmodes/instructions),
             skip MCP configuration.
         mcp_only: If True, only install MCP configuration, skip agent files.
+        service: If True, also install as a system service for auto-start.
 
     Returns:
         None. Progress messages printed to stdout.
@@ -539,10 +541,108 @@ def run_install(
     if not mcp_only:
         _copy_agent_files(fs, bundled_dir, github_dir, working_dir)
 
+    # Install as service if requested
+    if service:
+        _log("Installing as system service...", emoji="🔧")
+        try:
+            from .service import get_service_manager
+
+            manager = get_service_manager(fs)
+            if manager.install():
+                _log("Service installed successfully", emoji="✅")
+                _log("Service will start automatically on login")
+                _log("Use 'ai-session-tracker service start' to start now")
+            else:
+                _log("Failed to install service", emoji="❌")
+        except NotImplementedError as e:
+            _log(f"Service installation not supported: {e}", emoji="⚠️")
+
     _log(f"Successfully installed {SERVER_NAME}", emoji="✅")
     if not prompts_only:
         _log(f"Config: {config_path}")
         _log(f"Command: {server_config['command']} {' '.join(server_config['args'])}")
+
+
+def run_service(
+    action: str,
+    filesystem: FileSystem | None = None,
+) -> int:
+    """
+    Manage AI Session Tracker system service.
+
+    Controls the AI Session Tracker service that runs in the background.
+    Supports start, stop, status, and uninstall operations.
+
+    Business context: The service provides persistent background operation
+    of the MCP server, enabling session tracking without requiring
+    per-project setup or manual server starts.
+
+    Args:
+        action: Service action to perform. One of:
+            - 'start': Start the service
+            - 'stop': Stop the service
+            - 'status': Show service status
+            - 'uninstall': Remove the service
+        filesystem: Optional FileSystem for testability.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+
+    Example:
+        >>> run_service('status')
+        🔍 Service Status:
+        📦 Installed: Yes
+        🟢 Running: Yes
+        0
+    """
+    from .service import get_service_manager
+
+    try:
+        manager = get_service_manager(filesystem)
+    except NotImplementedError as e:
+        _log(f"Service management not supported: {e}", emoji="❌")
+        return 1
+
+    if action == "start":
+        _log("Starting service...", emoji="🚀")
+        if manager.start():
+            _log("Service started successfully", emoji="✅")
+            return 0
+        else:
+            _log("Failed to start service", emoji="❌")
+            return 1
+
+    elif action == "stop":
+        _log("Stopping service...", emoji="🛑")
+        if manager.stop():
+            _log("Service stopped successfully", emoji="✅")
+            return 0
+        else:
+            _log("Failed to stop service", emoji="❌")
+            return 1
+
+    elif action == "status":
+        _log("Service Status:", emoji="🔍")
+        status = manager.status()
+        installed_icon = "✅" if status["installed"] else "❌"
+        running_icon = "🟢" if status["running"] else "🔴"
+        _log(f"Installed: {'Yes' if status['installed'] else 'No'}", emoji=installed_icon)
+        _log(f"Running: {'Yes' if status['running'] else 'No'}", emoji=running_icon)
+        _log(f"Status: {status['status']}")
+        return 0
+
+    elif action == "uninstall":
+        _log("Uninstalling service...", emoji="🗑️")
+        if manager.uninstall():
+            _log("Service uninstalled successfully", emoji="✅")
+            return 0
+        else:
+            _log("Failed to uninstall service", emoji="❌")
+            return 1
+
+    else:
+        _log(f"Unknown action: {action}", emoji="❌")
+        return 1
 
 
 def main() -> int:
@@ -650,6 +750,22 @@ def main() -> int:
         action="store_true",
         help="Only install MCP configuration, skip agent files",
     )
+    install_parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Install as a system service for auto-start on login",
+    )
+
+    # Service command
+    service_parser = subparsers.add_parser(
+        "service",
+        help="Manage AI Session Tracker service",
+    )
+    service_parser.add_argument(
+        "action",
+        choices=["start", "stop", "status", "uninstall"],
+        help="Service action to perform",
+    )
 
     args = parser.parse_args()
 
@@ -662,7 +778,10 @@ def main() -> int:
             global_install=args.global_install,
             prompts_only=args.prompts_only,
             mcp_only=args.mcp_only,
+            service=args.service,
         )
+    elif args.command == "service":
+        return run_service(args.action)
     elif args.command == "server":
         run_server(
             dashboard_host=args.dashboard_host,
