@@ -113,12 +113,18 @@ class SessionService:
         self.storage = storage or StorageManager()
         self.stats_engine = stats_engine or StatisticsEngine()
 
-    def _auto_close_active_sessions(self) -> list[str]:
+    def _auto_close_active_sessions(self, execution_context: str) -> list[str]:
         """
         Auto-close any active sessions before starting a new one.
 
-        Finds all sessions with status 'active' and closes them with
-        outcome 'partial' and a note indicating they were auto-closed.
+        Finds all sessions with status 'active' and matching execution_context,
+        then closes them with outcome 'partial' and a note indicating they
+        were auto-closed. Sessions with different execution_context are not
+        affected (e.g., foreground sessions won't close background sessions).
+
+        Args:
+            execution_context: The context of the new session ('foreground' or
+                'background'). Only sessions with matching context are closed.
 
         Returns:
             list[str]: List of session IDs that were auto-closed.
@@ -127,7 +133,10 @@ class SessionService:
         try:
             sessions = self.storage.load_sessions()
             for session_id, session_data in sessions.items():
-                if session_data.get("status") == "active":
+                if (
+                    session_data.get("status") == "active"
+                    and session_data.get("execution_context") == execution_context
+                ):
                     session_data["status"] = "completed"
                     session_data["end_time"] = datetime.now(UTC).isoformat()
                     session_data["outcome"] = "partial"
@@ -154,12 +163,14 @@ class SessionService:
         human_time_estimate_minutes: float,
         estimate_source: str,
         context: str = "",
+        execution_context: str = "foreground",
     ) -> ServiceResult:
         """
         Start a new tracking session.
 
         Creates a new session with a unique ID and persists it to storage.
-        Automatically closes any previously active sessions.
+        Automatically closes any previously active sessions with the same
+        execution_context.
 
         Args:
             name: Descriptive name for the task.
@@ -168,6 +179,7 @@ class SessionService:
             human_time_estimate_minutes: Baseline time estimate.
             estimate_source: 'manual', 'issue_tracker', or 'historical'.
             context: Optional additional context string.
+            execution_context: 'foreground' (MCP) or 'background' (CLI).
 
         Returns:
             ServiceResult with session_id in data on success.
@@ -190,8 +202,17 @@ class SessionService:
                     error=f"estimate_source must be one of: {', '.join(sorted(valid_sources))}",
                 )
 
-            # Auto-close any active sessions first
-            auto_closed = self._auto_close_active_sessions()
+            # Validate execution_context
+            if execution_context not in Config.EXECUTION_CONTEXTS:
+                valid_contexts = ", ".join(sorted(Config.EXECUTION_CONTEXTS))
+                return ServiceResult(
+                    success=False,
+                    message="Invalid execution context",
+                    error=f"execution_context must be one of: {valid_contexts}",
+                )
+
+            # Auto-close any active sessions with same execution_context
+            auto_closed = self._auto_close_active_sessions(execution_context)
 
             session = Session.create(
                 name=name,
@@ -200,6 +221,7 @@ class SessionService:
                 human_time_estimate_minutes=float(human_time_estimate_minutes),
                 estimate_source=estimate_source,
                 context=context,
+                execution_context=execution_context,
             )
 
             sessions = self.storage.load_sessions()
@@ -217,6 +239,7 @@ class SessionService:
                     "model_name": session.model_name,
                     "human_time_estimate_minutes": session.human_time_estimate_minutes,
                     "estimate_source": session.estimate_source,
+                    "execution_context": session.execution_context,
                     "auto_closed_sessions": auto_closed,
                 },
             )

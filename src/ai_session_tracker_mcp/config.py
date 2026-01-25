@@ -123,6 +123,21 @@ class Config:
     )
 
     # =========================================================================
+    # EXECUTION CONTEXT CONSTANTS
+    # =========================================================================
+    EXECUTION_CONTEXTS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "foreground",  # Interactive IDE session (VS Code MCP)
+            "background",  # CLI/automated agent
+        }
+    )
+    """
+    Execution context identifies how/where the AI session is running:
+    - foreground: Interactive IDE session via MCP server
+    - background: CLI commands, scripts, or automation
+    """
+
+    # =========================================================================
     # ENVIRONMENT VARIABLE NAMES
     # =========================================================================
     ENV_S3_BACKUP: ClassVar[str] = "AI_ENABLE_S3_BACKUP"

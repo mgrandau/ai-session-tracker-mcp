@@ -134,6 +134,7 @@ class Session:
     human_time_estimate_minutes: float
     estimate_source: str
     status: str = "active"
+    execution_context: str = "foreground"
     end_time: str | None = None
     outcome: str | None = None
     notes: str = ""
@@ -150,6 +151,7 @@ class Session:
         human_time_estimate_minutes: float,
         estimate_source: str,
         context: str = "",
+        execution_context: str = "foreground",
     ) -> Session:
         """
         Factory method to create new session with generated ID and timestamp.
@@ -164,6 +166,7 @@ class Session:
             human_time_estimate_minutes: Estimated time for human to complete task
             estimate_source: Where estimate came from ("manual", "issue_tracker", "historical")
             context: Optional additional context about the work
+            execution_context: Where session runs ("foreground" or "background")
 
         Returns:
             New Session instance with unique ID and start_time set.
@@ -185,6 +188,7 @@ class Session:
             model_name=model_name,
             human_time_estimate_minutes=human_time_estimate_minutes,
             estimate_source=estimate_source,
+            execution_context=execution_context,
         )
 
     def end(self, outcome: str, notes: str = "") -> None:
@@ -259,6 +263,7 @@ class Session:
             "human_time_estimate_minutes": self.human_time_estimate_minutes,
             "estimate_source": self.estimate_source,
             "status": self.status,
+            "execution_context": self.execution_context,
             "end_time": self.end_time,
             "outcome": self.outcome,
             "notes": self.notes,
@@ -306,6 +311,7 @@ class Session:
             human_time_estimate_minutes=data.get("human_time_estimate_minutes", 0.0),
             estimate_source=data.get("estimate_source", "unknown"),
             status=data.get("status", "active"),
+            execution_context=data.get("execution_context", "foreground"),
             end_time=data.get("end_time"),
             outcome=data.get("outcome"),
             notes=data.get("notes", ""),

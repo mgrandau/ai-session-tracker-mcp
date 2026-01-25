@@ -461,6 +461,7 @@ class SessionTrackerServer:
             human_time_estimate_minutes=float(args.get("human_time_estimate_minutes", 0)),
             estimate_source=args.get("estimate_source", ""),
             context=args.get("context", ""),
+            execution_context="foreground",
         )
 
         if not result.success:

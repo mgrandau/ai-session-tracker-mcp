@@ -723,6 +723,7 @@ def run_session_start(
         human_time_estimate_minutes=mins,
         estimate_source=source,
         context=context,
+        execution_context="background",
     )
     return _output_result(result.to_dict(), json_output)
 

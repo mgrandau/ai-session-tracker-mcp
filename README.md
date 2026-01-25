@@ -202,6 +202,20 @@ ai-session-tracker start --name "Test" --type testing --model gpt-4 --mins 30 --
 # Output: {"success": true, "message": "Session started", "data": {"session_id": "..."}}
 ```
 
+### Execution Context Isolation
+
+Sessions track an **execution context** (`foreground` or `background`) to enable independent operation:
+
+- **MCP sessions** run as `foreground` — interactive use via VS Code Copilot Chat
+- **CLI sessions** run as `background` — batch scripts, CI pipelines, or background processes
+
+**Why this matters:** When you start a new session, any previous *active* session with the **same** execution context is auto-closed with outcome `partial`. Sessions with different contexts are unaffected.
+
+This allows you to:
+- Run background batch processes via CLI while interactively using MCP
+- Avoid accidentally closing automation sessions when starting interactive work
+- Keep foreground and background metrics separate
+
 ---
 
 ## 🔄 Background Service

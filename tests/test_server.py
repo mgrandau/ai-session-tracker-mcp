@@ -701,6 +701,7 @@ class TestStartSession:
             "task_type": "code_generation",
             "status": "active",
             "start_time": "2024-01-01T00:00:00+00:00",
+            "execution_context": "foreground",
             "notes": "",
         }
         server.storage.save_sessions(sessions)
@@ -767,6 +768,7 @@ class TestStartSession:
             "task_type": "code_generation",
             "status": "active",
             "start_time": "2024-01-01T00:00:00+00:00",
+            "execution_context": "foreground",
             "notes": "",
         }
         sessions["session_2"] = {
@@ -775,6 +777,7 @@ class TestStartSession:
             "task_type": "debugging",
             "status": "active",
             "start_time": "2024-01-02T00:00:00+00:00",
+            "execution_context": "foreground",
             "notes": "Some existing notes",
         }
         server.storage.save_sessions(sessions)
@@ -809,6 +812,147 @@ class TestStartSession:
         assert len(auto_closed) == 2
         assert "session_1" in auto_closed
         assert "session_2" in auto_closed
+
+    @pytest.mark.asyncio
+    async def test_auto_close_respects_execution_context(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies start_ai_session only auto-closes sessions with matching execution_context.
+
+        Tests that foreground sessions don't auto-close background sessions
+        and vice versa. MCP server creates foreground sessions, CLI creates
+        background sessions.
+
+        Business context:
+        Users may run background batch processes via CLI while interactively
+        using MCP. These should operate independently - a new MCP session
+        shouldn't close an active CLI session.
+
+        Arrangement:
+        Create an active session with 'background' execution_context.
+
+        Action:
+        Call _handle_start_session (which creates 'foreground' sessions).
+
+        Assertion Strategy:
+        Validates the background session remains active and is NOT auto-closed.
+
+        Testing Principle:
+        Validates execution_context isolation for session auto-close.
+        """
+        # Create an active background session (as if from CLI)
+        sessions = server.storage.load_sessions()
+        sessions["background_session"] = {
+            "id": "background_session",
+            "session_name": "CLI Session",
+            "task_type": "code_generation",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "execution_context": "background",
+            "notes": "",
+        }
+        server.storage.save_sessions(sessions)
+
+        # Start a new foreground session via MCP
+        result = await server._handle_start_session(
+            {
+                "session_name": "MCP Session",
+                "task_type": "debugging",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 30,
+                "estimate_source": "manual",
+            },
+            1,
+        )
+
+        # Verify the background session was NOT auto-closed
+        background_session = server.storage.get_session("background_session")
+        assert background_session is not None
+        assert background_session["status"] == "active"
+        assert background_session.get("outcome") is None
+
+        # Verify the response shows no auto-closed sessions
+        auto_closed = result["result"]["auto_closed_sessions"]
+        assert len(auto_closed) == 0
+
+        # Verify the new foreground session was created
+        new_session_id = result["result"]["session_id"]
+        new_session = server.storage.get_session(new_session_id)
+        assert new_session["execution_context"] == "foreground"
+
+    @pytest.mark.asyncio
+    async def test_auto_close_only_matches_same_context(self, server: SessionTrackerServer) -> None:
+        """Verifies start_ai_session auto-closes only sessions with matching context.
+
+        Tests mixed scenario with both foreground and background active sessions.
+        Only foreground sessions should be auto-closed by a new foreground session.
+
+        Business context:
+        Ensures correct isolation when both MCP and CLI sessions are active
+        simultaneously, targeting the same storage.
+
+        Arrangement:
+        Create both a foreground and background active session.
+
+        Action:
+        Call _handle_start_session (foreground).
+
+        Assertion Strategy:
+        Validates foreground session is closed, background remains active.
+
+        Testing Principle:
+        Validates selective auto-close based on execution_context.
+        """
+        # Create both foreground and background active sessions
+        sessions = server.storage.load_sessions()
+        sessions["foreground_session"] = {
+            "id": "foreground_session",
+            "session_name": "MCP Old Session",
+            "task_type": "testing",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "execution_context": "foreground",
+            "notes": "",
+        }
+        sessions["background_session"] = {
+            "id": "background_session",
+            "session_name": "CLI Session",
+            "task_type": "code_generation",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "execution_context": "background",
+            "notes": "",
+        }
+        server.storage.save_sessions(sessions)
+
+        # Start a new foreground session
+        result = await server._handle_start_session(
+            {
+                "session_name": "New MCP Session",
+                "task_type": "debugging",
+                "model_name": "claude-opus-4-20250514",
+                "human_time_estimate_minutes": 30,
+                "estimate_source": "manual",
+            },
+            1,
+        )
+
+        # Verify only the foreground session was auto-closed
+        foreground_session = server.storage.get_session("foreground_session")
+        background_session = server.storage.get_session("background_session")
+
+        assert foreground_session["status"] == "completed"
+        assert foreground_session["outcome"] == "partial"
+        assert "[Auto-closed: new session started]" in foreground_session["notes"]
+
+        assert background_session["status"] == "active"
+        assert background_session.get("outcome") is None
+
+        # Verify response only shows foreground session as auto-closed
+        auto_closed = result["result"]["auto_closed_sessions"]
+        assert len(auto_closed) == 1
+        assert "foreground_session" in auto_closed
+        assert "background_session" not in auto_closed
 
     @pytest.mark.asyncio
     async def test_no_auto_close_when_no_active_sessions(
