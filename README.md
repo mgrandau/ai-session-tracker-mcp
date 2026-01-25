@@ -142,6 +142,68 @@ ai-session-tracker install --service
 
 ---
 
+## 📝 Session Tracking CLI
+
+Track sessions from the command line without needing an MCP server:
+
+```bash
+# Start a session - returns session_id
+ai-session-tracker start \
+  --name "Implement login feature" \
+  --type code_generation \
+  --model claude-opus-4-20250514 \
+  --mins 60 \
+  --source manual
+
+# Log an interaction
+ai-session-tracker log \
+  --session-id "SESSION_ID" \
+  --prompt "Create login form component" \
+  --summary "Generated React component with validation" \
+  --rating 5
+
+# Flag an issue
+ai-session-tracker flag \
+  --session-id "SESSION_ID" \
+  --type hallucination \
+  --desc "AI referenced non-existent library" \
+  --severity high
+
+# List active sessions
+ai-session-tracker active
+
+# End a session
+ai-session-tracker end \
+  --session-id "SESSION_ID" \
+  --outcome success \
+  --notes "Feature completed successfully"
+```
+
+### Command Reference
+
+| Command | Description | Required Args |
+|---------|-------------|---------------|
+| `start` | Start a new session | `--name`, `--type`, `--model`, `--mins`, `--source` |
+| `log` | Log an interaction | `--session-id`, `--prompt`, `--summary`, `--rating` |
+| `end` | End a session | `--session-id`, `--outcome` |
+| `flag` | Flag an issue | `--session-id`, `--type`, `--desc`, `--severity` |
+| `active` | List active sessions | *(none)* |
+
+### Task Types
+
+`code_generation`, `debugging`, `refactoring`, `testing`, `documentation`, `analysis`, `architecture_planning`, `human_review`
+
+### Output Formats
+
+All commands support `--json` flag for machine-readable output:
+
+```bash
+ai-session-tracker start --name "Test" --type testing --model gpt-4 --mins 30 --source manual --json
+# Output: {"success": true, "message": "Session started", "data": {"session_id": "..."}}
+```
+
+---
+
 ## 🔄 Background Service
 
 Install the MCP server as a system service to run automatically at login:

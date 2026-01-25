@@ -645,6 +645,235 @@ def run_service(
         return 1
 
 
+# =============================================================================
+# SESSION TRACKING CLI COMMANDS
+# =============================================================================
+
+
+def _output_result(result: dict[str, Any], json_output: bool = False) -> int:
+    """
+    Output service result to stdout.
+
+    Args:
+        result: ServiceResult.to_dict() output.
+        json_output: If True, output as JSON. Otherwise human-readable.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    if json_output:
+        print(json.dumps(result, indent=2))
+    else:
+        if result["success"]:
+            _log(result["message"], emoji="✅")
+            if result.get("data"):
+                for key, value in result["data"].items():
+                    if key not in ("report",):  # Skip large data
+                        print(f"  {key}: {value}")
+        else:
+            _log(result["message"], emoji="❌")
+            if result.get("error"):
+                print(f"  Error: {result['error']}")
+
+    return 0 if result["success"] else 1
+
+
+def run_session_start(
+    name: str,
+    task_type: str,
+    model: str,
+    mins: float,
+    source: str,
+    context: str = "",
+    *,
+    json_output: bool = False,
+) -> int:
+    """
+    Start a new tracking session via CLI.
+
+    Creates a new session with the specified parameters and outputs
+    the session_id for use in subsequent commands.
+
+    Business context: Enables session tracking from CLI agents,
+    scripts, and CI/CD pipelines that cannot access MCP servers.
+
+    Args:
+        name: Descriptive name for the task.
+        task_type: Category (code_generation, debugging, etc.).
+        model: AI model being used.
+        mins: Human time estimate in minutes.
+        source: Estimate source (manual, issue_tracker, historical).
+        context: Optional additional context.
+        json_output: If True, output JSON instead of human-readable text.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+
+    Example:
+        >>> # ai-session-tracker start --name "Add login" --type code_generation \\
+        >>> #   --model claude-opus-4-20250514 --mins 60 --source manual
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.start_session(
+        name=name,
+        task_type=task_type,
+        model_name=model,
+        human_time_estimate_minutes=mins,
+        estimate_source=source,
+        context=context,
+    )
+    return _output_result(result.to_dict(), json_output)
+
+
+def run_session_log(
+    session_id: str,
+    prompt: str,
+    summary: str,
+    rating: int,
+    iterations: int = 1,
+    tools: list[str] | None = None,
+    *,
+    json_output: bool = False,
+) -> int:
+    """
+    Log an interaction via CLI.
+
+    Records a prompt/response exchange with effectiveness rating.
+
+    Args:
+        session_id: Parent session identifier.
+        prompt: The prompt text sent to AI.
+        summary: Brief description of AI response.
+        rating: Effectiveness rating 1-5.
+        iterations: Number of attempts.
+        tools: List of tools used.
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.log_interaction(
+        session_id=session_id,
+        prompt=prompt,
+        response_summary=summary,
+        effectiveness_rating=rating,
+        iteration_count=iterations,
+        tools_used=tools or [],
+    )
+    return _output_result(result.to_dict(), json_output)
+
+
+def run_session_end(
+    session_id: str,
+    outcome: str,
+    notes: str = "",
+    *,
+    json_output: bool = False,
+) -> int:
+    """
+    End a tracking session via CLI.
+
+    Marks the session as completed with the specified outcome.
+
+    Args:
+        session_id: Session identifier to complete.
+        outcome: 'success', 'partial', or 'failed'.
+        notes: Optional summary notes.
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.end_session(
+        session_id=session_id,
+        outcome=outcome,
+        notes=notes,
+    )
+    return _output_result(result.to_dict(), json_output)
+
+
+def run_session_flag(
+    session_id: str,
+    issue_type: str,
+    description: str,
+    severity: str,
+    *,
+    json_output: bool = False,
+) -> int:
+    """
+    Flag an issue via CLI.
+
+    Records a problematic AI interaction for analysis.
+
+    Args:
+        session_id: Parent session identifier.
+        issue_type: Issue category.
+        description: Detailed description.
+        severity: 'low', 'medium', 'high', or 'critical'.
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.flag_issue(
+        session_id=session_id,
+        issue_type=issue_type,
+        description=description,
+        severity=severity,
+    )
+    return _output_result(result.to_dict(), json_output)
+
+
+def run_session_active(*, json_output: bool = False) -> int:
+    """
+    List active sessions via CLI.
+
+    Returns sessions that haven't been ended yet.
+
+    Args:
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.get_active_sessions()
+
+    if json_output:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        if result.success:
+            sessions = result.data.get("active_sessions", []) if result.data else []
+            if not sessions:
+                _log("No active sessions found", emoji="📋")
+            else:
+                _log(f"Found {len(sessions)} active session(s):", emoji="📋")
+                for s in sessions:
+                    print(f"\n  {s['session_name']}")
+                    print(f"    ID: {s['session_id']}")
+                    print(f"    Type: {s['task_type']}")
+                    print(f"    Started: {s['start_time']}")
+        else:
+            _log(result.message, emoji="❌")
+            if result.error:
+                print(f"  Error: {result.error}")
+
+    return 0 if result.success else 1
+
+
 def main() -> int:
     """
     Main CLI entry point for AI Session Tracker.
@@ -767,6 +996,186 @@ def main() -> int:
         help="Service action to perform",
     )
 
+    # =========================================================================
+    # SESSION TRACKING CLI COMMANDS
+    # =========================================================================
+
+    # Start session command
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Start a new tracking session",
+    )
+    start_parser.add_argument(
+        "--name",
+        required=True,
+        help="Descriptive name for the session",
+    )
+    start_parser.add_argument(
+        "--type",
+        dest="task_type",
+        required=True,
+        choices=[
+            "code_generation",
+            "debugging",
+            "refactoring",
+            "testing",
+            "documentation",
+            "analysis",
+            "architecture_planning",
+            "human_review",
+        ],
+        help="Task category",
+    )
+    start_parser.add_argument(
+        "--model",
+        required=True,
+        help="AI model being used (e.g., 'claude-opus-4-20250514')",
+    )
+    start_parser.add_argument(
+        "--mins",
+        type=float,
+        required=True,
+        help="Human time estimate in minutes",
+    )
+    start_parser.add_argument(
+        "--source",
+        required=True,
+        choices=["manual", "issue_tracker", "historical"],
+        help="Where the time estimate came from",
+    )
+    start_parser.add_argument(
+        "--context",
+        default="",
+        help="Additional context about the work",
+    )
+    start_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    # Log interaction command
+    log_parser = subparsers.add_parser(
+        "log",
+        help="Log an AI interaction",
+    )
+    log_parser.add_argument(
+        "--session-id",
+        required=True,
+        help="Session ID from start command",
+    )
+    log_parser.add_argument(
+        "--prompt",
+        required=True,
+        help="The prompt sent to AI",
+    )
+    log_parser.add_argument(
+        "--summary",
+        required=True,
+        help="Brief summary of AI response",
+    )
+    log_parser.add_argument(
+        "--rating",
+        type=int,
+        required=True,
+        choices=[1, 2, 3, 4, 5],
+        help="Effectiveness rating (1=failed, 3=partial, 5=perfect)",
+    )
+    log_parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Number of attempts (default: 1)",
+    )
+    log_parser.add_argument(
+        "--tools",
+        nargs="*",
+        default=[],
+        help="Tools used in this interaction",
+    )
+    log_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    # End session command
+    end_parser = subparsers.add_parser(
+        "end",
+        help="End a tracking session",
+    )
+    end_parser.add_argument(
+        "--session-id",
+        required=True,
+        help="Session ID to end",
+    )
+    end_parser.add_argument(
+        "--outcome",
+        required=True,
+        choices=["success", "partial", "failed"],
+        help="Session result",
+    )
+    end_parser.add_argument(
+        "--notes",
+        default="",
+        help="Summary notes about the session",
+    )
+    end_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    # Flag issue command
+    flag_parser = subparsers.add_parser(
+        "flag",
+        help="Flag a problematic AI interaction",
+    )
+    flag_parser.add_argument(
+        "--session-id",
+        required=True,
+        help="Session ID for the issue",
+    )
+    flag_parser.add_argument(
+        "--type",
+        dest="issue_type",
+        required=True,
+        help="Issue category (e.g., 'hallucination', 'incorrect_output')",
+    )
+    flag_parser.add_argument(
+        "--desc",
+        dest="description",
+        required=True,
+        help="Detailed description of what went wrong",
+    )
+    flag_parser.add_argument(
+        "--severity",
+        required=True,
+        choices=["low", "medium", "high", "critical"],
+        help="Impact level",
+    )
+    flag_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    # Active sessions command
+    active_parser = subparsers.add_parser(
+        "active",
+        help="List active (not ended) sessions",
+    )
+    active_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
     args = parser.parse_args()
 
     if args.command == "dashboard":
@@ -782,6 +1191,43 @@ def main() -> int:
         )
     elif args.command == "service":
         return run_service(args.action)
+    elif args.command == "start":
+        return run_session_start(
+            name=args.name,
+            task_type=args.task_type,
+            model=args.model,
+            mins=args.mins,
+            source=args.source,
+            context=args.context,
+            json_output=args.json_output,
+        )
+    elif args.command == "log":
+        return run_session_log(
+            session_id=args.session_id,
+            prompt=args.prompt,
+            summary=args.summary,
+            rating=args.rating,
+            iterations=args.iterations,
+            tools=args.tools,
+            json_output=args.json_output,
+        )
+    elif args.command == "end":
+        return run_session_end(
+            session_id=args.session_id,
+            outcome=args.outcome,
+            notes=args.notes,
+            json_output=args.json_output,
+        )
+    elif args.command == "flag":
+        return run_session_flag(
+            session_id=args.session_id,
+            issue_type=args.issue_type,
+            description=args.description,
+            severity=args.severity,
+            json_output=args.json_output,
+        )
+    elif args.command == "active":
+        return run_session_active(json_output=args.json_output)
     elif args.command == "server":
         run_server(
             dashboard_host=args.dashboard_host,

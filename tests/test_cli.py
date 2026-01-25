@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from io import StringIO
 from typing import TYPE_CHECKING
@@ -1434,3 +1435,520 @@ class TestMainModule:
         from ai_session_tracker_mcp.__main__ import main
 
         assert callable(main)
+
+
+class TestSessionStartCommand:
+    """Tests for session start CLI command."""
+
+    def test_start_command_parses_arguments(self) -> None:
+        """Verifies 'start' subcommand parses required arguments.
+
+        Business context:
+        Session start requires specific parameters for tracking.
+        """
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_start") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "start",
+                    "--name",
+                    "Test task",
+                    "--type",
+                    "code_generation",
+                    "--model",
+                    "claude-opus-4-20250514",
+                    "--mins",
+                    "60",
+                    "--source",
+                    "manual",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with(
+                name="Test task",
+                task_type="code_generation",
+                model="claude-opus-4-20250514",
+                mins=60.0,
+                source="manual",
+                context="",
+                json_output=False,
+            )
+            assert result == 0
+
+    def test_start_command_with_optional_args(self) -> None:
+        """Verifies 'start' subcommand accepts optional arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_start") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "start",
+                    "--name",
+                    "Test task",
+                    "--type",
+                    "debugging",
+                    "--model",
+                    "gpt-4",
+                    "--mins",
+                    "120",
+                    "--source",
+                    "issue_tracker",
+                    "--context",
+                    "Extra context here",
+                    "--json",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                name="Test task",
+                task_type="debugging",
+                model="gpt-4",
+                mins=120.0,
+                source="issue_tracker",
+                context="Extra context here",
+                json_output=True,
+            )
+
+    def test_run_session_start_success(self) -> None:
+        """Verifies run_session_start returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_session_start
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Session started",
+            data={"session_id": "test_123"},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.start_session.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_start(
+                name="Test",
+                task_type="testing",
+                model="test-model",
+                mins=30,
+                source="manual",
+            )
+
+            assert result == 0
+            mock_service.start_session.assert_called_once()
+
+    def test_run_session_start_failure(self) -> None:
+        """Verifies run_session_start returns 1 on failure."""
+        from ai_session_tracker_mcp.cli import run_session_start
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=False,
+            message="Invalid parameters",
+            error="Task type invalid",
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.start_session.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_start(
+                name="Test",
+                task_type="invalid",
+                model="test-model",
+                mins=30,
+                source="manual",
+            )
+
+            assert result == 1
+
+
+class TestSessionLogCommand:
+    """Tests for session log CLI command."""
+
+    def test_log_command_parses_arguments(self) -> None:
+        """Verifies 'log' subcommand parses required arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_log") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "log",
+                    "--session-id",
+                    "test_123",
+                    "--prompt",
+                    "Test prompt",
+                    "--summary",
+                    "Test summary",
+                    "--rating",
+                    "4",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                session_id="test_123",
+                prompt="Test prompt",
+                summary="Test summary",
+                rating=4,
+                iterations=1,
+                tools=[],
+                json_output=False,
+            )
+
+    def test_log_command_with_optional_args(self) -> None:
+        """Verifies 'log' subcommand accepts optional arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_log") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "log",
+                    "--session-id",
+                    "test_123",
+                    "--prompt",
+                    "Test prompt",
+                    "--summary",
+                    "Test summary",
+                    "--rating",
+                    "5",
+                    "--iterations",
+                    "3",
+                    "--tools",
+                    "read_file",
+                    "grep_search",
+                    "--json",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                session_id="test_123",
+                prompt="Test prompt",
+                summary="Test summary",
+                rating=5,
+                iterations=3,
+                tools=["read_file", "grep_search"],
+                json_output=True,
+            )
+
+    def test_run_session_log_success(self) -> None:
+        """Verifies run_session_log returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_session_log
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Interaction logged",
+            data={"interaction_id": "int_123"},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.log_interaction.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_log(
+                session_id="test_123",
+                prompt="Test",
+                summary="Result",
+                rating=4,
+            )
+
+            assert result == 0
+
+
+class TestSessionEndCommand:
+    """Tests for session end CLI command."""
+
+    def test_end_command_parses_arguments(self) -> None:
+        """Verifies 'end' subcommand parses required arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_end") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "end",
+                    "--session-id",
+                    "test_123",
+                    "--outcome",
+                    "success",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                session_id="test_123",
+                outcome="success",
+                notes="",
+                json_output=False,
+            )
+
+    def test_end_command_with_notes(self) -> None:
+        """Verifies 'end' subcommand accepts notes argument."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_end") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "end",
+                    "--session-id",
+                    "test_123",
+                    "--outcome",
+                    "partial",
+                    "--notes",
+                    "Some notes here",
+                    "--json",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                session_id="test_123",
+                outcome="partial",
+                notes="Some notes here",
+                json_output=True,
+            )
+
+    def test_run_session_end_success(self) -> None:
+        """Verifies run_session_end returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_session_end
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Session ended",
+            data={"duration_minutes": 30.5},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.end_session.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_end(
+                session_id="test_123",
+                outcome="success",
+            )
+
+            assert result == 0
+
+
+class TestSessionFlagCommand:
+    """Tests for session flag CLI command."""
+
+    def test_flag_command_parses_arguments(self) -> None:
+        """Verifies 'flag' subcommand parses required arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_flag") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "ai-session-tracker",
+                    "flag",
+                    "--session-id",
+                    "test_123",
+                    "--type",
+                    "hallucination",
+                    "--desc",
+                    "AI made stuff up",
+                    "--severity",
+                    "high",
+                ],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(
+                session_id="test_123",
+                issue_type="hallucination",
+                description="AI made stuff up",
+                severity="high",
+                json_output=False,
+            )
+
+    def test_run_session_flag_success(self) -> None:
+        """Verifies run_session_flag returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_session_flag
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Issue flagged",
+            data={"issue_id": "issue_123"},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.flag_issue.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_flag(
+                session_id="test_123",
+                issue_type="error",
+                description="Something wrong",
+                severity="low",
+            )
+
+            assert result == 0
+
+
+class TestSessionActiveCommand:
+    """Tests for session active CLI command."""
+
+    def test_active_command_parses_arguments(self) -> None:
+        """Verifies 'active' subcommand works with no arguments."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_active") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                ["ai-session-tracker", "active"],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(json_output=False)
+
+    def test_active_command_with_json_flag(self) -> None:
+        """Verifies 'active' subcommand accepts --json flag."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_session_active") as mock_run,
+            patch.object(
+                sys,
+                "argv",
+                ["ai-session-tracker", "active", "--json"],
+            ),
+        ):
+            mock_run.return_value = 0
+            main()
+            mock_run.assert_called_once_with(json_output=True)
+
+    def test_run_session_active_with_sessions(self) -> None:
+        """Verifies run_session_active displays active sessions."""
+        from ai_session_tracker_mcp.cli import run_session_active
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Found 1 active session(s)",
+            data={
+                "active_sessions": [
+                    {
+                        "session_id": "test_123",
+                        "session_name": "Test Session",
+                        "task_type": "testing",
+                        "start_time": "2024-01-01T00:00:00+00:00",
+                    }
+                ]
+            },
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_active_sessions.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_active()
+
+            assert result == 0
+            mock_service.get_active_sessions.assert_called_once()
+
+    def test_run_session_active_no_sessions(self) -> None:
+        """Verifies run_session_active handles empty result."""
+        from ai_session_tracker_mcp.cli import run_session_active
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="No active sessions",
+            data={"active_sessions": []},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_active_sessions.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_active()
+
+            assert result == 0
+
+
+class TestOutputResult:
+    """Tests for _output_result helper function."""
+
+    def test_output_result_json_success(self) -> None:
+        """Verifies _output_result outputs JSON correctly."""
+        from ai_session_tracker_mcp.cli import _output_result
+
+        result_dict = {
+            "success": True,
+            "message": "Test message",
+            "data": {"key": "value"},
+        }
+
+        captured = StringIO()
+        with patch.object(sys, "stdout", captured):
+            exit_code = _output_result(result_dict, json_output=True)
+
+        assert exit_code == 0
+        output = captured.getvalue()
+        parsed = json.loads(output)
+        assert parsed == result_dict
+
+    def test_output_result_json_failure(self) -> None:
+        """Verifies _output_result returns 1 for failure."""
+        from ai_session_tracker_mcp.cli import _output_result
+
+        result_dict = {
+            "success": False,
+            "message": "Error occurred",
+            "error": "Something went wrong",
+        }
+
+        captured = StringIO()
+        with patch.object(sys, "stdout", captured):
+            exit_code = _output_result(result_dict, json_output=True)
+
+        assert exit_code == 1

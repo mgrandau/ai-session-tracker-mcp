@@ -49,7 +49,8 @@ from typing import Any, cast
 
 from .config import Config
 from .filesystem import FileSystem, RealFileSystem
-from .models import FunctionMetrics, Interaction, Issue, Session
+from .models import FunctionMetrics
+from .session_service import SessionService
 from .statistics import StatisticsEngine
 from .storage import StorageManager
 
@@ -153,6 +154,12 @@ class SessionTrackerServer:
         self.storage = storage or StorageManager()
         self.filesystem = filesystem or RealFileSystem()
         self.stats_engine = StatisticsEngine()
+
+        # Session service for shared business logic
+        self.session_service = SessionService(
+            storage=self.storage,
+            stats_engine=self.stats_engine,
+        )
 
         # Tool name -> executor method mapping (using constants)
         self._tool_handlers = {
@@ -433,180 +440,74 @@ class SessionTrackerServer:
     # TOOL HANDLERS
     # =========================================================================
 
-    def _auto_close_active_sessions(self) -> list[str]:
-        """
-        Auto-close any active sessions before starting a new one.
-
-        Finds all sessions with status 'active' and closes them with
-        outcome 'partial' and a note indicating they were auto-closed.
-        This ensures only one session is ever active at a time.
-
-        Business context: Users may forget to end sessions or sessions
-        may not be closed due to errors/crashes. Auto-closing orphaned
-        sessions ensures accurate metrics and prevents confusion.
-
-        Returns:
-            list[str]: List of session IDs that were auto-closed.
-
-        Example:
-            >>> closed = server._auto_close_active_sessions()
-            >>> print(f"Auto-closed {len(closed)} sessions")
-        """
-        closed_sessions = []
-        try:
-            sessions = self.storage.load_sessions()
-            for session_id, session_data in sessions.items():
-                if session_data.get("status") == "active":
-                    session_data["status"] = "completed"
-                    session_data["end_time"] = datetime.now(UTC).isoformat()
-                    session_data["outcome"] = "partial"
-                    session_data["notes"] = (
-                        session_data.get("notes", "") + " [Auto-closed: new session started]"
-                    ).strip()
-                    sessions[session_id] = session_data
-                    closed_sessions.append(session_id)
-                    logger.warning(f"Auto-closed active session: {session_id}")
-
-            if closed_sessions:
-                self.storage.save_sessions(sessions)
-
-        except Exception as e:
-            logger.error(f"Error auto-closing sessions: {e}")
-
-        return closed_sessions
-
     async def _handle_start_session(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
         """
         Handle start_ai_session tool to begin a new tracking session.
 
-        Creates a new session with a unique generated ID, persists it to
-        storage, and returns a formatted response with the session ID and
-        workflow reminder. This should be the first tool called in any
-        AI-assisted task.
-
-        Automatically closes any previously active sessions before creating
-        the new one to ensure only one session is active at a time.
-
-        Business context: Session creation is the entry point for all
-        tracking. The generated session_id is used in all subsequent
-        tool calls to associate interactions and issues with this work.
+        Delegates to SessionService for business logic and formats the
+        result as an MCP response.
 
         Args:
-            args: Tool arguments containing:
-                - session_name: Descriptive name for the task
-                - task_type: Category from Config.TASK_TYPES
-                - model_name: AI model being used (e.g., 'claude-opus-4-20250514')
-                - human_time_estimate_minutes: Baseline time estimate
-                - estimate_source: 'manual', 'issue_tracker', or 'historical'
-                - context: (optional) Additional context string
+            args: Tool arguments containing session parameters.
             msg_id: JSON-RPC message ID for response correlation.
 
         Returns:
-            JSON-RPC success response with session_id in both text
-            content and result metadata, or error response on failure.
-
-        Raises:
-            None - Returns error response on exception.
-
-        Example:
-            >>> response = await server._handle_start_session({
-            ...     'session_name': 'Add login',
-            ...     'task_type': 'code_generation',
-            ...     'model_name': 'claude-opus-4-20250514',
-            ...     'human_time_estimate_minutes': 60,
-            ...     'estimate_source': 'manual'
-            ... }, msg_id=1)
+            JSON-RPC success response with session_id, or error response.
         """
-        try:
-            # Auto-close any active sessions first
-            auto_closed = self._auto_close_active_sessions()
+        result = self.session_service.start_session(
+            name=args.get("session_name", ""),
+            task_type=args.get("task_type", ""),
+            model_name=args.get("model_name", ""),
+            human_time_estimate_minutes=float(args.get("human_time_estimate_minutes", 0)),
+            estimate_source=args.get("estimate_source", ""),
+            context=args.get("context", ""),
+        )
 
-            session = Session.create(
-                name=args["session_name"],
-                task_type=args["task_type"],
-                model_name=args["model_name"],
-                human_time_estimate_minutes=float(args["human_time_estimate_minutes"]),
-                estimate_source=args["estimate_source"],
-                context=args.get("context", ""),
+        if not result.success:
+            return self._error_response(msg_id, -32603, result.error or result.message)
+
+        data = result.data or {}
+        session_id = data.get("session_id", "")
+        auto_closed = data.get("auto_closed_sessions", [])
+
+        # Build response with optional auto-close notice
+        auto_close_notice = ""
+        if auto_closed:
+            closed_ids = ", ".join(auto_closed)
+            auto_close_notice = (
+                f"\n⚠️ Auto-closed {len(auto_closed)} previous session(s): {closed_ids}\n"
             )
 
-            sessions = self.storage.load_sessions()
-            sessions[session.id] = session.to_dict()
-            self.storage.save_sessions(sessions)
-
-            logger.info(f"Started session: {session.id}")
-
-            # Build response with optional auto-close notice
-            auto_close_notice = ""
-            if auto_closed:
-                closed_ids = ", ".join(auto_closed)
-                auto_close_notice = (
-                    f"\n⚠️ Auto-closed {len(auto_closed)} previous session(s): {closed_ids}\n"
-                )
-
-            response_text = f"""
-✅ Session Started: {session.id}
-Type: {session.task_type} | Model: {session.model_name}
-Estimate: {session.human_time_estimate_minutes:.0f}min ({session.estimate_source})
+        response_text = f"""
+✅ Session Started: {session_id}
+Type: {data.get('task_type')} | Model: {data.get('model_name')}
+Estimate: {data.get('human_time_estimate_minutes', 0):.0f}min ({data.get('estimate_source')})
 {auto_close_notice}
 ⚠️ Log interactions! Call log_ai_interaction(session_id, prompt, rating 1-5) after responses.
 """
-            return self._success_response(
-                msg_id,
-                response_text,
-                {"session_id": session.id, "auto_closed_sessions": auto_closed},
-            )
-
-        except Exception as e:
-            logger.error(f"Error starting session: {e}")
-            return self._error_response(msg_id, -32603, f"Failed to start session: {e}")
+        return self._success_response(
+            msg_id,
+            response_text,
+            {"session_id": session_id, "auto_closed_sessions": auto_closed},
+        )
 
     async def _handle_log_interaction(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
         """
         Handle log_ai_interaction tool to record a prompt/response exchange.
 
-        Records an AI interaction with effectiveness rating, updates the
-        parent session's running statistics (total interactions, average
-        effectiveness), and persists both to storage.
-
-        Business context: Interaction logging captures the granular quality
-        data needed for effectiveness analysis. The rating (1-5) reflects
-        how useful the AI output was, building the dataset for ROI metrics.
+        Delegates to SessionService for business logic and formats the
+        result as an MCP response.
 
         Args:
-            args: Tool arguments containing:
-                - session_id: Parent session identifier
-                - prompt: The prompt text sent to AI
-                - response_summary: Brief description of AI response
-                - effectiveness_rating: Integer 1-5 (1=failed, 5=perfect)
-                - iteration_count: (optional) Number of attempts, default 1
-                - tools_used: (optional) List of MCP tools used
+            args: Tool arguments containing interaction parameters.
             msg_id: JSON-RPC message ID for response correlation.
 
         Returns:
-            JSON-RPC success response with rating visualization and
-            session statistics, or error response on failure.
-
-        Raises:
-            None - Returns error response on exception or missing session.
-
-        Example:
-            >>> response = await server._handle_log_interaction({
-            ...     'session_id': 'abc123',
-            ...     'prompt': 'Add user validation',
-            ...     'response_summary': 'Created validate_user function',
-            ...     'effectiveness_rating': 4
-            ... }, msg_id=1)
+            JSON-RPC success response with rating visualization, or error response.
         """
         try:
-            session_id = args["session_id"]
-            session_data, error = self._require_session(session_id, msg_id)
-            if error:
-                return error
-            session_data = cast(dict[str, Any], session_data)  # Narrowed by error check
-
-            interaction = Interaction.create(
-                session_id=session_id,
+            result = self.session_service.log_interaction(
+                session_id=args["session_id"],
                 prompt=args["prompt"],
                 response_summary=args["response_summary"],
                 effectiveness_rating=args["effectiveness_rating"],
@@ -614,26 +515,18 @@ Estimate: {session.human_time_estimate_minutes:.0f}min ({session.estimate_source
                 tools_used=args.get("tools_used", []),
             )
 
-            self.storage.add_interaction(interaction.to_dict())
+            if not result.success:
+                return self._error_response(msg_id, -32602, result.error or result.message)
 
-            # Update session statistics
-            session_interactions = self.storage.get_session_interactions(session_id)
-            total = len(session_interactions)
-            avg_eff = sum(i["effectiveness_rating"] for i in session_interactions) / total
+            data = result.data or {}
+            rating = data.get("effectiveness_rating", 0)
+            iterations = data.get("iteration_count", 1)
+            total = data.get("total_interactions", 0)
+            avg_eff = data.get("avg_effectiveness", 0)
 
-            session_data["total_interactions"] = total
-            session_data["avg_effectiveness"] = round(avg_eff, 2)
-            self.storage.update_session(session_id, session_data)
-
-            logger.info(
-                f"Logged interaction for session {session_id}, "
-                f"rating: {interaction.effectiveness_rating}"
-            )
-
-            rating = interaction.effectiveness_rating
             stars = "★" * rating + "☆" * (5 - rating)
             response_text = f"""
-📝 Logged: {stars} ({rating}/5) | Iterations: {interaction.iteration_count}
+📝 Logged: {stars} ({rating}/5) | Iterations: {iterations}
 Session: {total} interactions, avg {avg_eff:.1f}/5
 """
             return self._success_response(msg_id, response_text)
@@ -648,65 +541,38 @@ Session: {total} interactions, avg {avg_eff:.1f}/5
         """
         Handle end_ai_session tool to complete a tracking session.
 
-        Marks the session as completed with end timestamp and outcome,
-        calculates final duration metrics, and persists the updated
-        session. Returns a summary of session performance.
-
-        Business context: Session completion triggers final metric
-        calculation. The duration becomes the actual AI time used for
-        ROI comparison against the human baseline estimate.
+        Delegates to SessionService for business logic and formats the
+        result as an MCP response.
 
         Args:
-            args: Tool arguments containing:
-                - session_id: Session identifier to complete
-                - outcome: 'success', 'partial', or 'failed'
-                - notes: (optional) Summary notes about the session
+            args: Tool arguments containing session_id and outcome.
             msg_id: JSON-RPC message ID for response correlation.
 
         Returns:
-            JSON-RPC success response with session summary including
-            duration, interaction count, and effectiveness average,
-            or error response on failure.
-
-        Raises:
-            None - Returns error response on exception or missing session.
-
-        Example:
-            >>> response = await server._handle_end_session({
-            ...     'session_id': 'abc123',
-            ...     'outcome': 'success',
-            ...     'notes': 'Completed login feature'
-            ... }, msg_id=1)
+            JSON-RPC success response with session summary, or error response.
         """
         try:
-            session_id = args["session_id"]
-            session_data, error = self._require_session(session_id, msg_id)
-            if error:
-                return error
-            session_data = cast(dict[str, Any], session_data)  # Narrowed by error check
+            result = self.session_service.end_session(
+                session_id=args["session_id"],
+                outcome=args["outcome"],
+                notes=args.get("notes", ""),
+            )
 
-            # Update session
-            session_data["status"] = "completed"
-            session_data["end_time"] = datetime.now(UTC).isoformat()
-            session_data["outcome"] = args["outcome"]
-            session_data["notes"] = args.get("notes", "")
+            if not result.success:
+                return self._error_response(msg_id, -32602, result.error or result.message)
 
-            self.storage.update_session(session_id, session_data)
+            data = result.data or {}
+            session_id = data.get("session_id", "")
+            duration = data.get("duration_minutes", 0)
+            outcome = data.get("outcome", "")
+            interactions = data.get("total_interactions", 0)
+            avg_eff = data.get("avg_effectiveness", 0)
+            issues_count = data.get("issues_count", 0)
 
-            # Calculate duration
-            duration = self.stats_engine.calculate_session_duration_minutes(session_data)
-
-            # Get session issues
-            issues = self.storage.get_session_issues(session_id)
-
-            logger.info(f"Ended session {session_id}, outcome: {args['outcome']}")
-
-            interactions = session_data.get("total_interactions", 0)
-            avg_eff = session_data.get("avg_effectiveness", 0)
             response_text = f"""
 ✅ Session Ended: {session_id}
-Duration: {duration:.1f}min | Outcome: {args["outcome"]}
-Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
+Duration: {duration:.1f}min | Outcome: {outcome}
+Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {issues_count} issues
 """
             return self._success_response(msg_id, response_text)
 
@@ -720,62 +586,36 @@ Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {len(issues)} issues
         """
         Handle flag_ai_issue tool to record problematic AI interactions.
 
-        Records an issue with type and severity for later analysis.
-        Issues help identify patterns in AI failures and areas needing
-        improved prompting or different approaches.
-
-        Business context: Issue tracking is essential for continuous
-        improvement of AI workflows. Analyzing issue patterns helps
-        teams develop better prompting strategies and identify when
-        to adjust AI tool usage.
+        Delegates to SessionService for business logic and formats the
+        result as an MCP response.
 
         Args:
-            args: Tool arguments containing:
-                - session_id: Parent session identifier
-                - issue_type: Category (e.g., 'hallucination', 'incorrect_output')
-                - description: Detailed description of the problem
-                - severity: 'low', 'medium', 'high', or 'critical'
+            args: Tool arguments containing issue parameters.
             msg_id: JSON-RPC message ID for response correlation.
 
         Returns:
-            JSON-RPC success response with issue confirmation including
-            severity emoji indicator, or error response on failure.
-
-        Raises:
-            None - Returns error response on exception or missing session.
-
-        Example:
-            >>> response = await server._handle_flag_issue({
-            ...     'session_id': 'abc123',
-            ...     'issue_type': 'hallucination',
-            ...     'description': 'Referenced non-existent API',
-            ...     'severity': 'medium'
-            ... }, msg_id=1)
+            JSON-RPC success response with issue confirmation, or error response.
         """
         try:
-            session_id = args["session_id"]
-            session_data, error = self._require_session(session_id, msg_id)
-            if error:
-                return error
-            del session_data  # Not used; silence unused variable warning
-
-            issue = Issue.create(
-                session_id=session_id,
+            result = self.session_service.flag_issue(
+                session_id=args["session_id"],
                 issue_type=args["issue_type"],
                 description=args["description"],
                 severity=args["severity"],
             )
 
-            self.storage.add_issue(issue.to_dict())
+            if not result.success:
+                return self._error_response(msg_id, -32602, result.error or result.message)
 
-            logger.info(
-                f"Flagged issue for session {session_id}: {args['issue_type']} ({args['severity']})"
-            )
+            data = result.data or {}
+            issue_type = data.get("issue_type", "")
+            severity = data.get("severity", "")
+            session_id = data.get("session_id", "")
 
-            emoji = SEVERITY_EMOJI.get(args["severity"], "⚪")
+            emoji = SEVERITY_EMOJI.get(severity, "⚪")
 
             response_text = f"""
-{emoji} Issue Flagged: {args["issue_type"]} ({args["severity"].upper()})
+{emoji} Issue Flagged: {issue_type} ({severity.upper()})
 Session: {session_id}
 📋 Next: log_ai_interaction() or end_ai_session()
 """
@@ -1583,9 +1423,10 @@ Session: {session_id}
         """
         Close all active sessions on server shutdown.
 
-        Finds any sessions with status 'active' and marks them as completed
-        with outcome 'partial' and a note indicating server shutdown. This
-        ensures no sessions are left orphaned when the server stops.
+        Delegates to SessionService to find any sessions with status 'active'
+        and mark them as completed with outcome 'partial' and a note indicating
+        server shutdown. This ensures no sessions are left orphaned when the
+        server stops.
 
         Business context: Active sessions left open when the server stops
         would show incorrect metrics (infinite duration). Auto-closing
@@ -1605,28 +1446,7 @@ Session: {session_id}
             >>> await server._close_active_sessions()
             # All active sessions now marked completed
         """
-        try:
-            sessions = self.storage.load_sessions()
-            active_count = 0
-
-            for session_id, session_data in sessions.items():
-                if session_data.get("status") == "active":
-                    session_data["status"] = "completed"
-                    session_data["end_time"] = datetime.now(UTC).isoformat()
-                    session_data["outcome"] = "partial"
-                    session_data["notes"] = (
-                        session_data.get("notes", "") + " [Auto-closed on server shutdown]"
-                    ).strip()
-                    sessions[session_id] = session_data
-                    active_count += 1
-                    logger.info(f"Auto-closed active session: {session_id}")
-
-            if active_count > 0:
-                self.storage.save_sessions(sessions)
-                logger.info(f"Auto-closed {active_count} active session(s) on shutdown")
-
-        except Exception as e:
-            logger.error(f"Error closing active sessions: {e}")
+        self.session_service.close_active_sessions_on_shutdown()
 
 
 async def main() -> None:  # pragma: no cover

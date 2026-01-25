@@ -2137,18 +2137,18 @@ class TestLogInteractionExceptionHandling:
         error responses allow clients to recover gracefully.
 
         Arrangement:
-        Mock storage to raise exception during interaction add.
+        Mock session_service to raise exception during log.
 
         Action:
         Call _handle_log_interaction with valid data.
 
         Assertion Strategy:
-        Validates error response with -32603 code.
+        Validates error response with -32603 code (internal error).
         """
         from unittest.mock import patch
 
         with patch.object(
-            server.storage, "add_interaction", side_effect=Exception("Unexpected error")
+            server.session_service, "log_interaction", side_effect=Exception("Unexpected error")
         ):
             result = await server._handle_log_interaction(
                 {
@@ -2215,18 +2215,18 @@ class TestEndSessionExceptionHandling:
         Server must handle storage failures gracefully.
 
         Arrangement:
-        Mock storage to raise exception during update.
+        Mock session_service to raise exception during end.
 
         Action:
         Call _handle_end_session with valid data.
 
         Assertion Strategy:
-        Validates error response with -32603 code.
+        Validates error response with -32603 code (internal error).
         """
         from unittest.mock import patch
 
         with patch.object(
-            server.storage, "update_session", side_effect=Exception("Unexpected error")
+            server.session_service, "end_session", side_effect=Exception("Unexpected error")
         ):
             result = await server._handle_end_session(
                 {"session_id": session_id, "outcome": "success"},
@@ -2287,17 +2287,19 @@ class TestFlagIssueExceptionHandling:
         Issue flagging failures should not crash server.
 
         Arrangement:
-        Mock storage to raise exception during add.
+        Mock session_service to raise exception during flag.
 
         Action:
         Call _handle_flag_issue with valid data.
 
         Assertion Strategy:
-        Validates error response with -32603 code.
+        Validates error response with -32603 code (internal error).
         """
         from unittest.mock import patch
 
-        with patch.object(server.storage, "add_issue", side_effect=Exception("Unexpected error")):
+        with patch.object(
+            server.session_service, "flag_issue", side_effect=Exception("Unexpected error")
+        ):
             result = await server._handle_flag_issue(
                 {
                     "session_id": session_id,
