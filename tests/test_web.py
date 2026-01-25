@@ -400,12 +400,12 @@ class TestPartialRoutes:
     def test_roi_partial(self, client: TestClient) -> None:
         """Verifies ROI partial returns HTML panel fragment.
 
-        Tests the htmx endpoint for updating the ROI summary panel
+        Tests the htmx endpoint for updating the productivity summary panel
         without full page reload.
 
         Business context:
-        htmx polls /partials/roi to update ROI metrics in real-time.
-        Panel shows percentage, time saved, and cost saved.
+        htmx polls /partials/roi to update productivity metrics in real-time.
+        Panel shows multiplier, time saved, and cost saved.
 
         Arrangement:
         Mock storage with empty sessions and interactions.
@@ -414,7 +414,7 @@ class TestPartialRoutes:
         HTTP GET request to /partials/roi.
 
         Assertion Strategy:
-        Validates HTTP 200 and presence of 'ROI' text in response,
+        Validates HTTP 200 and presence of 'Productivity' text in response,
         confirming the panel content is rendered.
         """
         with patch("ai_session_tracker_mcp.web.routes.get_storage") as mock_get:
@@ -425,7 +425,7 @@ class TestPartialRoutes:
 
             response = client.get("/partials/roi")
             assert response.status_code == 200
-            assert "ROI" in response.text
+            assert "Productivity" in response.text
 
     def test_effectiveness_partial(self, client: TestClient) -> None:
         """Verifies effectiveness partial returns HTML panel fragment.
@@ -932,12 +932,13 @@ class TestHtmxPartialRoutes:
                 human_baseline_cost=1000.0,
                 total_ai_cost=500.0,
                 cost_saved=500.0,
+                productivity_multiplier=2.0,
             )
             mock_get.return_value = mock_presenter
 
             response = client.get("/partials/roi")
             assert response.status_code == 200
-            assert "ROI" in response.text
+            assert "Productivity" in response.text
 
     def test_effectiveness_partial_returns_html(self, client: TestClient) -> None:
         """Verifies effectiveness partial endpoint returns HTML panel fragment.

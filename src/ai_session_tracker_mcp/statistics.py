@@ -686,6 +686,20 @@ class StatisticsEngine:
         cost_saved = human_cost - total_ai_cost
         roi_percentage = (cost_saved / human_cost * 100) if human_cost > 0 else 0
 
+        # Calculate actual human oversight time (session time + quick/normal gaps)
+        gaps = self.calculate_session_gaps(sessions)
+        oversight_gap_minutes = sum(
+            g["duration_minutes"]
+            for g in gaps.get("gaps", [])
+            if g["classification"] in ("quick", "normal")
+        )
+        actual_oversight_hours = total_ai_hours + (oversight_gap_minutes / 60.0)
+
+        # Calculate productivity multiplier (human estimate / actual oversight time)
+        productivity_multiplier = (
+            estimated_human_hours / actual_oversight_hours if actual_oversight_hours > 0 else 0.0
+        )
+
         # Productivity metrics
         avg_effectiveness = self.calculate_average_effectiveness(interactions)
         total_interactions = len(interactions)
@@ -708,6 +722,7 @@ class StatisticsEngine:
                 "total_ai_cost": round(total_ai_cost, 2),
                 "cost_saved": round(cost_saved, 2),
                 "roi_percentage": round(roi_percentage, 1),
+                "productivity_multiplier": round(productivity_multiplier, 1),
             },
             "productivity_metrics": {
                 "total_interactions": total_interactions,

@@ -1068,11 +1068,11 @@ def _render_roi_panel(roi: object) -> str:
         True
     """
     r: ROIViewModel = roi  # type: ignore[assignment]
-    metric_class = "positive" if r.roi_percentage >= 0 else "neutral"
+    metric_class = "positive" if r.productivity_multiplier >= 1.0 else "neutral"
 
-    return f"""<h2>💰 ROI Summary</h2>
-        <div class="metric {metric_class}">{r.roi_percentage:.0f}%</div>
-        <div class="metric-label">Return on Investment</div>
+    return f"""<h2>💰 Productivity Summary</h2>
+        <div class="metric {metric_class}">{r.productivity_multiplier:.1f}x</div>
+        <div class="metric-label">Productivity Multiplier</div>
         <div style="margin-top: 1rem; font-size: 0.875rem;">
             <div>Sessions: {r.total_sessions} ({r.completed_sessions} completed)</div>
             <div>Time Saved: {r.time_saved_display}</div>

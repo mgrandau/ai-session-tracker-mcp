@@ -244,6 +244,7 @@ class ROIViewModel:
     total_ai_cost: float
     cost_saved: float
     roi_percentage: float
+    productivity_multiplier: float = 0.0
 
     @property
     def time_saved_display(self) -> str:
@@ -1078,6 +1079,7 @@ class DashboardPresenter:
             total_ai_cost=roi["cost_metrics"]["total_ai_cost"],
             cost_saved=roi["cost_metrics"]["cost_saved"],
             roi_percentage=roi["cost_metrics"]["roi_percentage"],
+            productivity_multiplier=roi["cost_metrics"]["productivity_multiplier"],
         )
 
     def _build_effectiveness(

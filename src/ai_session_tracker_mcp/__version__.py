@@ -1,7 +1,7 @@
 """Version information for ai-session-tracker-mcp."""
 
-__version__ = "1.0.2"
-__version_date__ = "2026-01-15"
+__version__ = "1.0.3"
+__version_date__ = "2026-01-24"
 
 __title__ = "ai_session_tracker_mcp"
 __description__ = "MCP server for tracking AI coding sessions and measuring developer productivity"
