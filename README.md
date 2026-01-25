@@ -49,7 +49,7 @@ ai-session-tracker install
 This creates:
 - `.vscode/mcp.json` — MCP server configuration
 - `.github/instructions/` — AI instruction files
-- `.github/chatmodes/` — VS Code chat mode definitions
+- `.github/agents/` — VS Code custom agent definitions
 
 ### Full MCP Configuration Template
 

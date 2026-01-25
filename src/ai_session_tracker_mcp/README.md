@@ -47,7 +47,7 @@ ai_session_tracker_mcp/
 ├── statistics.py       # StatisticsEngine: ROI, effectiveness, gaps
 ├── storage.py          # StorageManager: JSON I/O, CRUD operations
 ├── agent_files/
-│   ├── chatmodes/      # VS Code chat mode definitions
+│   ├── agents/         # VS Code custom agent definitions
 │   └── instructions/   # AI instruction files for agents
 └── web/
     ├── __init__.py     # Exports: create_app, run_dashboard

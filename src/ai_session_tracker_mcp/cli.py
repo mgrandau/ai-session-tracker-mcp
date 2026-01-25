@@ -44,7 +44,7 @@ VSCODE_DIR = ".vscode"
 GITHUB_DIR = ".github"
 CONFIG_FILE = "mcp.json"
 AGENT_FILES_DIR = "agent_files"
-AGENT_SUBDIRS = ("chatmodes", "instructions")
+AGENT_SUBDIRS = ("agents", "instructions")
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 SUBPROCESS_TIMEOUT = 5
@@ -367,7 +367,7 @@ def _copy_agent_files(
     """
     Copy bundled agent files to project's .github directory.
 
-    Copies chatmode definitions and instruction files from the installed
+    Copies agent definitions and instruction files from the installed
     package to the user's project. Files that already exist are skipped
     to preserve user customizations.
 
@@ -435,16 +435,16 @@ def run_install(
     Install AI Session Tracker for the current project.
 
     Creates or updates .vscode/mcp.json to include the ai-session-tracker
-    MCP server configuration, and copies chatmode and instruction files
+    MCP server configuration, and copies agent and instruction files
     to .github/ for VS Code agent integration.
 
     Business context: Initialization is the first step for new projects.
     It sets up the MCP configuration so VS Code recognizes the session
-    tracker and provides the chatmode for tracked agent workflows.
+    tracker and provides the custom agent for tracked agent workflows.
 
     Files created/updated:
     - .vscode/mcp.json: MCP server configuration
-    - .github/chatmodes/: Session tracking chat modes
+    - .github/agents/: Session tracking custom agents
     - .github/instructions/: AI instruction files
 
     Args:
@@ -454,7 +454,7 @@ def run_install(
         package_dir: Optional package directory for bundled files.
         global_install: If True, install to user's global VS Code settings
             instead of project .vscode directory.
-        prompts_only: If True, only install agent files (chatmodes/instructions),
+        prompts_only: If True, only install agent files (agents/instructions),
             skip MCP configuration.
         mcp_only: If True, only install MCP configuration, skip agent files.
         service: If True, also install as a system service for auto-start.
@@ -743,7 +743,7 @@ def main() -> int:
     install_parser.add_argument(
         "--prompts-only",
         action="store_true",
-        help="Only install agent files (chatmodes/instructions), skip MCP config",
+        help="Only install agent files (agents/instructions), skip MCP config",
     )
     install_parser.add_argument(
         "--mcp-only",

@@ -673,13 +673,13 @@ class TestRunInstall:
         assert "servers" in config
 
     def test_run_install_copies_agent_files(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install copies chatmode and instruction files.
+        """Verifies run_install copies agent and instruction files.
 
         Tests that install copies bundled files to .github directory
         for VS Code agent integration.
 
         Business context:
-        Users need chatmode and instruction files for the tracked
+        Users need agent and instruction files for the tracked
         agent workflow. Install automates their installation.
 
         Arrangement:
@@ -694,9 +694,9 @@ class TestRunInstall:
         from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
-        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
+        mock_fs.makedirs("/pkg/agent_files/agents", exist_ok=True)
         mock_fs.makedirs("/pkg/agent_files/instructions", exist_ok=True)
-        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test Chatmode")
+        mock_fs.set_file("/pkg/agent_files/agents/test.agent.md", "# Test Agent")
         mock_fs.set_file(
             "/pkg/agent_files/instructions/test.instructions.md", "# Test Instructions"
         )
@@ -704,9 +704,9 @@ class TestRunInstall:
         run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Verify files were copied
-        assert mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+        assert mock_fs.exists("/project/.github/agents/test.agent.md")
         assert mock_fs.exists("/project/.github/instructions/test.instructions.md")
-        assert mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Test Chatmode"
+        assert mock_fs.get_file("/project/.github/agents/test.agent.md") == "# Test Agent"
 
     def test_run_install_skips_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
         """Verifies run_install doesn't overwrite existing agent files.
@@ -730,19 +730,17 @@ class TestRunInstall:
         from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
-        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
-        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# New Content")
+        mock_fs.makedirs("/pkg/agent_files/agents", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/agents/test.agent.md", "# New Content")
 
         # Set up existing file at destination
-        mock_fs.makedirs("/project/.github/chatmodes", exist_ok=True)
-        mock_fs.set_file("/project/.github/chatmodes/test.chatmode.md", "# Existing Content")
+        mock_fs.makedirs("/project/.github/agents", exist_ok=True)
+        mock_fs.set_file("/project/.github/agents/test.agent.md", "# Existing Content")
 
         run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
         # Verify existing content is preserved
-        assert (
-            mock_fs.get_file("/project/.github/chatmodes/test.chatmode.md") == "# Existing Content"
-        )
+        assert mock_fs.get_file("/project/.github/agents/test.agent.md") == "# Existing Content"
 
     def test_run_install_fallback_to_module_invocation(self, mock_fs: MockFileSystem) -> None:
         """Verifies run_install uses module invocation when executable not found.
@@ -892,8 +890,8 @@ class TestRunInstall:
         from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
-        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
-        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test")
+        mock_fs.makedirs("/pkg/agent_files/agents", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/agents/test.agent.md", "# Test")
 
         run_install(
             filesystem=mock_fs,
@@ -906,7 +904,7 @@ class TestRunInstall:
         assert not mock_fs.exists("/project/.vscode/mcp.json")
 
         # Verify agent files were copied
-        assert mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+        assert mock_fs.exists("/project/.github/agents/test.agent.md")
 
     def test_run_install_mcp_only_skips_agent_files(self, mock_fs: MockFileSystem) -> None:
         """Verifies --mcp-only flag skips agent file installation.
@@ -935,8 +933,8 @@ class TestRunInstall:
         from ai_session_tracker_mcp.cli import run_install
 
         # Set up bundled agent files
-        mock_fs.makedirs("/pkg/agent_files/chatmodes", exist_ok=True)
-        mock_fs.set_file("/pkg/agent_files/chatmodes/test.chatmode.md", "# Test")
+        mock_fs.makedirs("/pkg/agent_files/agents", exist_ok=True)
+        mock_fs.set_file("/pkg/agent_files/agents/test.agent.md", "# Test")
 
         run_install(
             filesystem=mock_fs,
@@ -952,7 +950,7 @@ class TestRunInstall:
         assert "ai-session-tracker" in config["servers"]
 
         # Verify agent files were NOT copied
-        assert not mock_fs.exists("/project/.github/chatmodes/test.chatmode.md")
+        assert not mock_fs.exists("/project/.github/agents/test.agent.md")
 
     def test_run_install_global_flag_linux(self, mock_fs: MockFileSystem) -> None:
         """Verifies --global flag installs to user's global VS Code settings.
