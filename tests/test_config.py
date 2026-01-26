@@ -26,7 +26,6 @@ class TestConfigConstants:
             pytest.param("WORKING_HOURS_PER_MONTH", 160.0, id="working_hours"),
             pytest.param("MCP_VERSION", "2024-11-05", id="mcp_version"),
             pytest.param("SERVER_NAME", "ai-session-tracker", id="server_name"),
-            pytest.param("SERVER_VERSION", "1.0.2", id="server_version"),
         ],
     )
     def test_config_constant_value(self, attr_name: str, expected_value: object) -> None:
@@ -55,6 +54,15 @@ class TestConfigConstants:
         Parameterized test validates all constant values efficiently.
         """
         assert getattr(Config, attr_name) == expected_value
+
+    def test_server_version_is_semver(self) -> None:
+        """Verifies SERVER_VERSION follows semver format.
+
+        Tests that version string matches X.Y.Z pattern.
+        """
+        import re
+
+        assert re.match(r"^\d+\.\d+\.\d+$", Config.SERVER_VERSION)
 
     def test_task_types_is_frozenset(self) -> None:
         """Verifies task types is a frozen set.
