@@ -481,8 +481,8 @@ class SessionTrackerServer:
 
         response_text = f"""
 ✅ Session Started: {session_id}
-Type: {data.get('task_type')} | Model: {data.get('model_name')}
-Estimate: {data.get('human_time_estimate_minutes', 0):.0f}min ({data.get('estimate_source')})
+Type: {data.get("task_type")} | Model: {data.get("model_name")}
+Estimate: {data.get("human_time_estimate_minutes", 0):.0f}min ({data.get("estimate_source")})
 {auto_close_notice}
 ⚠️ Log interactions! Call log_ai_interaction(session_id, prompt, rating 1-5) after responses.
 """
