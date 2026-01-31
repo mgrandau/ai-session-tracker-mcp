@@ -592,15 +592,24 @@ class StatisticsEngine:
             )
 
         # Check for increasing gaps over time (trend)
-        if len(gaps) >= 3:
-            first_half = gaps[: len(gaps) // 2]
-            second_half = gaps[len(gaps) // 2 :]
-            first_avg = sum(g["duration_minutes"] for g in first_half) / len(first_half)
-            second_avg = sum(g["duration_minutes"] for g in second_half) / len(second_half)
-            if second_avg > first_avg * FRICTION_TREND_MULTIPLIER:
-                friction_indicators.append("Gaps increasing over time - possible adoption decline")
+        # Check for increasing gap trend (requires at least 3 gaps)
+        trend_indicator = self._detect_gap_trend(gaps)
+        if trend_indicator:
+            friction_indicators.append(trend_indicator)
 
         return friction_indicators
+
+    def _detect_gap_trend(self, gaps: list[dict[str, Any]]) -> str | None:
+        """Detect if gaps are trending upward over time."""
+        if len(gaps) < 3:
+            return None
+        first_half = gaps[: len(gaps) // 2]
+        second_half = gaps[len(gaps) // 2 :]
+        first_avg = sum(g["duration_minutes"] for g in first_half) / len(first_half)
+        second_avg = sum(g["duration_minutes"] for g in second_half) / len(second_half)
+        if second_avg > first_avg * FRICTION_TREND_MULTIPLIER:
+            return "Gaps increasing over time - possible adoption decline"
+        return None
 
     def calculate_roi_metrics(
         self,

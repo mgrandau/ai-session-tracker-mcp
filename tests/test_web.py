@@ -154,6 +154,36 @@ class TestWebAppCreation:
         assert "/api/overview" in routes
         assert "/api/report" in routes
 
+    def test_create_app_mounts_static_files_when_directory_exists(self) -> None:
+        """Verifies create_app mounts static files when static directory exists.
+
+        Tests that when the static directory exists, it gets mounted at /static.
+
+        Business context:
+        Static files (CSS, JS) need to be served when present for dashboard styling.
+        """
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        # Create a mock Path that reports exists() as True
+        mock_static_dir = MagicMock(spec=Path)
+        mock_static_dir.exists.return_value = True
+
+        with patch("ai_session_tracker_mcp.web.app.Path") as mock_path_cls:
+            # Make Path(__file__).parent / "static" return our mock
+            mock_path_instance = MagicMock()
+            mock_path_instance.__truediv__ = MagicMock(return_value=mock_static_dir)
+            mock_path_cls.return_value.parent = mock_path_instance
+
+            # Also patch StaticFiles to avoid actual file system access
+            with patch("ai_session_tracker_mcp.web.app.StaticFiles") as mock_static_files:
+                mock_static_files.return_value = MagicMock()
+
+                create_app()  # App creation triggers static file mounting
+
+                # Verify static files were mounted
+                mock_static_files.assert_called_once()
+
     def test_lifespan_logs_startup_and_shutdown(self) -> None:
         """Verifies lifespan context manager logs startup and shutdown.
 

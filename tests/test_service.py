@@ -7,6 +7,7 @@ AI CONTEXT: Tests for systemd (Linux), launchd (macOS), Task Scheduler (Windows)
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -450,3 +451,201 @@ class TestServiceTemplates:
         assert "Label" in LAUNCHD_PLIST_TEMPLATE
         assert "ProgramArguments" in LAUNCHD_PLIST_TEMPLATE
         assert "RunAtLoad" in LAUNCHD_PLIST_TEMPLATE
+
+
+# ============================================================
+# Error Path Tests (CalledProcessError handling)
+# ============================================================
+
+
+class TestLinuxServiceManagerErrors:
+    """Tests for Linux service manager error handling."""
+
+    @patch("subprocess.run")
+    def test_uninstall_handles_error(self, mock_run: MagicMock) -> None:
+        """Test uninstall handles subprocess errors."""
+        fs = MockFileSystem()
+        service_path = str(Path.home() / ".config/systemd/user" / f"{SERVICE_NAME}.service")
+        fs.files[service_path] = "content"
+        manager = LinuxServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "systemctl")
+
+        result = manager.uninstall()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_start_handles_error(self, mock_run: MagicMock) -> None:
+        """Test start handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = LinuxServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "systemctl")
+
+        result = manager.start()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_stop_handles_error(self, mock_run: MagicMock) -> None:
+        """Test stop handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = LinuxServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "systemctl")
+
+        result = manager.stop()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_status_handles_error(self, mock_run: MagicMock) -> None:
+        """Test status handles subprocess errors."""
+        fs = MockFileSystem()
+        service_path = str(Path.home() / ".config/systemd/user" / f"{SERVICE_NAME}.service")
+        fs.files[service_path] = "content"
+        manager = LinuxServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "systemctl")
+
+        status = manager.status()
+
+        assert status["installed"] is True
+        assert status["running"] is False
+        assert "Unable to determine status" in status["status"]
+
+
+class TestMacOSServiceManagerErrors:
+    """Tests for macOS service manager error handling."""
+
+    @patch("subprocess.run")
+    def test_install_handles_error(self, mock_run: MagicMock) -> None:
+        """Test install handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = MacOSServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "launchctl")
+
+        result = manager.install()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_uninstall_handles_error(self, mock_run: MagicMock) -> None:
+        """Test uninstall handles subprocess errors."""
+        fs = MockFileSystem()
+        plist_path = str(Path.home() / "Library/LaunchAgents/com.ai-session-tracker.mcp.plist")
+        fs.files[plist_path] = "content"
+        manager = MacOSServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "launchctl")
+
+        result = manager.uninstall()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_start_handles_error(self, mock_run: MagicMock) -> None:
+        """Test start handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = MacOSServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "launchctl")
+
+        result = manager.start()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_stop_handles_error(self, mock_run: MagicMock) -> None:
+        """Test stop handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = MacOSServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "launchctl")
+
+        result = manager.stop()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_status_handles_error(self, mock_run: MagicMock) -> None:
+        """Test status handles subprocess errors."""
+        fs = MockFileSystem()
+        plist_path = str(Path.home() / "Library/LaunchAgents/com.ai-session-tracker.mcp.plist")
+        fs.files[plist_path] = "content"
+        manager = MacOSServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "launchctl")
+
+        status = manager.status()
+
+        assert status["installed"] is True
+        assert status["running"] is False
+        assert "Unable to determine status" in status["status"]
+
+
+class TestWindowsServiceManagerErrors:
+    """Tests for Windows service manager error handling."""
+
+    @patch("subprocess.run")
+    def test_install_handles_error(self, mock_run: MagicMock) -> None:
+        """Test install handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "schtasks")
+
+        result = manager.install()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_uninstall_handles_error(self, mock_run: MagicMock) -> None:
+        """Test uninstall handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "schtasks")
+
+        result = manager.uninstall()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_start_handles_error(self, mock_run: MagicMock) -> None:
+        """Test start handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "schtasks")
+
+        result = manager.start()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_stop_handles_error(self, mock_run: MagicMock) -> None:
+        """Test stop handles subprocess errors."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "schtasks")
+
+        result = manager.stop()
+
+        assert result is False
+
+    @patch("subprocess.run")
+    def test_status_handles_error(self, mock_run: MagicMock) -> None:
+        """Test status handles CalledProcessError."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.side_effect = subprocess.CalledProcessError(1, "schtasks")
+
+        status = manager.status()
+
+        assert status["installed"] is False
+        assert status["running"] is False
+        assert "Unable to determine status" in status["status"]
+
+    @patch("subprocess.run")
+    def test_status_installed_and_running(self, mock_run: MagicMock) -> None:
+        """Test status when task is installed and running."""
+        fs = MockFileSystem()
+        manager = WindowsServiceManager(fs)
+        mock_run.return_value = MagicMock(returncode=0, stdout='"Task","Running","Ready"')
+
+        status = manager.status()
+
+        assert status["installed"] is True
+        assert status["running"] is True
+        assert "running" in status["status"].lower()

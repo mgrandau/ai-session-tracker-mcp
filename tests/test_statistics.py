@@ -1583,6 +1583,47 @@ class TestAnalyzeSessionGaps:
         # First half: two small gaps. Second half: one large gap (85 min)
         assert any("increasing over time" in ind for ind in result["friction_indicators"])
 
+    def test_no_friction_when_gaps_stable(self, engine: StatisticsEngine) -> None:
+        """Verifies no friction indicator when gap trend is stable or decreasing.
+
+        Business context:
+            If gaps are not increasing over time, no adoption decline warning.
+
+        Arrangement:
+            Create 4 sessions where second half gaps are smaller than first half.
+
+        Action:
+            Call calculate_session_gaps.
+
+        Assertion Strategy:
+            Validates "increasing over time" friction indicator is NOT present.
+        """
+        base = datetime.now(UTC)
+        sessions = {
+            # First half: large gaps (60 min between sessions)
+            "s1": {
+                "start_time": base.isoformat(),
+                "end_time": (base + timedelta(minutes=30)).isoformat(),
+            },
+            "s2": {
+                "start_time": (base + timedelta(minutes=90)).isoformat(),
+                "end_time": (base + timedelta(minutes=120)).isoformat(),
+            },
+            # Second half: small gaps (10 min between sessions)
+            "s3": {
+                "start_time": (base + timedelta(minutes=130)).isoformat(),
+                "end_time": (base + timedelta(minutes=160)).isoformat(),
+            },
+            "s4": {
+                "start_time": (base + timedelta(minutes=170)).isoformat(),
+                "end_time": (base + timedelta(minutes=200)).isoformat(),
+            },
+        }
+        result = engine.calculate_session_gaps(sessions)
+
+        # Gaps are decreasing, not increasing - no trend friction
+        assert not any("increasing over time" in ind for ind in result["friction_indicators"])
+
     def test_handles_invalid_timestamps(self, engine: StatisticsEngine) -> None:
         """Verifies invalid timestamps are skipped gracefully.
 

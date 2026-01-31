@@ -75,6 +75,35 @@ For manual configuration or to enable all features, use this template in `.vscod
 |----------|-------------|---------|
 | `--dashboard-host` | Host for embedded web dashboard | *(disabled)* |
 | `--dashboard-port` | Port for embedded web dashboard | *(disabled)* |
+| `--max-session-duration-hours` | Max hours before auto-close caps session end_time | `4.0` |
+
+**Environment variables:**
+
+Configure via `env` in your `mcp.json` or system environment:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AI_MAX_SESSION_DURATION_HOURS` | Max session duration in hours | `4.0` |
+| `AI_ENABLE_S3_BACKUP` | Enable S3 backup of session data | `false` |
+| `AI_PROJECT_ID` | Project identifier for S3 paths | *(directory name)* |
+
+**Example with environment variables:**
+
+```json
+{
+  "servers": {
+    "ai-session-tracker": {
+      "command": "ai-session-tracker",
+      "args": ["server"],
+      "env": {
+        "AI_MAX_SESSION_DURATION_HOURS": "8.0"
+      }
+    }
+  }
+}
+```
+
+> 💡 **Tip:** The `--max-session-duration-hours` setting prevents overnight sessions from skewing metrics. When a session exceeds this limit, its end_time is capped at `start_time + max_duration` instead of actual close time.
 
 > 💡 **Tip:** Enable `--dashboard-host` and `--dashboard-port` to get a live web dashboard at `http://127.0.0.1:8050` while the MCP server runs.
 
@@ -123,6 +152,9 @@ ai-session-tracker server
 
 # Start MCP server with embedded dashboard
 ai-session-tracker server --dashboard-host 0.0.0.0 --dashboard-port 8050
+
+# Start MCP server with custom max session duration (8 hours)
+ai-session-tracker server --max-session-duration-hours 8.0
 
 # Start standalone web dashboard
 ai-session-tracker dashboard [--host HOST] [--port PORT]

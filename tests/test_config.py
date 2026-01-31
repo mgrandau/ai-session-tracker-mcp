@@ -718,3 +718,65 @@ class TestConfigFilterProductiveSessions:
         result = Config.filter_productive_sessions(sessions)
         assert len(result) == 1
         assert "s1" in result
+
+
+class TestMaxSessionDuration:
+    """Tests for max session duration configuration."""
+
+    def test_default_max_session_duration(self) -> None:
+        """Verifies default max session duration is 4.0 hours."""
+        Config.reset_test_overrides()
+        assert Config.MAX_SESSION_DURATION_HOURS == 4.0
+
+    def test_get_max_session_duration_returns_default(self) -> None:
+        """Verifies get_max_session_duration_hours returns default when no override."""
+        Config.reset_test_overrides()
+        with patch.dict(os.environ, {}, clear=True):
+            result = Config.get_max_session_duration_hours()
+            assert result == 4.0
+
+    def test_get_max_session_duration_uses_override(self) -> None:
+        """Verifies test override takes precedence over default."""
+        Config.set_test_overrides(max_session_duration=8.0)
+        try:
+            result = Config.get_max_session_duration_hours()
+            assert result == 8.0
+        finally:
+            Config.reset_test_overrides()
+
+    def test_get_max_session_duration_from_env_var(self) -> None:
+        """Verifies environment variable is read when set."""
+        Config.reset_test_overrides()
+        with patch.dict(os.environ, {"AI_MAX_SESSION_DURATION_HOURS": "6.5"}):
+            result = Config.get_max_session_duration_hours()
+            assert result == 6.5
+
+    def test_get_max_session_duration_invalid_env_var_falls_back(self) -> None:
+        """Verifies invalid env var falls back to default."""
+        Config.reset_test_overrides()
+        with patch.dict(os.environ, {"AI_MAX_SESSION_DURATION_HOURS": "not-a-number"}):
+            result = Config.get_max_session_duration_hours()
+            assert result == 4.0
+
+    def test_override_takes_precedence_over_env_var(self) -> None:
+        """Verifies test override takes precedence over env var."""
+        Config.set_test_overrides(max_session_duration=2.0)
+        try:
+            with patch.dict(os.environ, {"AI_MAX_SESSION_DURATION_HOURS": "10.0"}):
+                result = Config.get_max_session_duration_hours()
+                assert result == 2.0
+        finally:
+            Config.reset_test_overrides()
+
+    def test_context_manager_sets_max_session_duration(self) -> None:
+        """Verifies context manager properly sets max_session_duration."""
+        with Config.override_for_test(max_session_duration=1.5):
+            result = Config.get_max_session_duration_hours()
+            assert result == 1.5
+        # Verify reset after context
+        Config.reset_test_overrides()
+        assert Config._max_session_duration_override is None
+
+    def test_env_var_name_constant(self) -> None:
+        """Verifies environment variable name constant is correct."""
+        assert Config.ENV_MAX_SESSION_DURATION == "AI_MAX_SESSION_DURATION_HOURS"

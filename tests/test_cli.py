@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1324,6 +1324,20 @@ class TestRunService:
             assert result == 0
             mock_manager.stop.assert_called_once()
 
+    def test_run_service_stop_failure(self) -> None:
+        """Verifies run_service stop returns 1 on failure."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.stop.return_value = False
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("stop")
+            assert result == 1
+
     def test_run_service_status_returns_info(self) -> None:
         """Verifies run_service status returns status information."""
         from ai_session_tracker_mcp.cli import run_service
@@ -1357,6 +1371,20 @@ class TestRunService:
             result = run_service("uninstall")
             assert result == 0
             mock_manager.uninstall.assert_called_once()
+
+    def test_run_service_uninstall_failure(self) -> None:
+        """Verifies run_service uninstall returns 1 on failure."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.uninstall.return_value = False
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("uninstall")
+            assert result == 1
 
     def test_run_service_unsupported_platform(self) -> None:
         """Verifies run_service handles unsupported platform."""
@@ -1952,3 +1980,298 @@ class TestOutputResult:
             exit_code = _output_result(result_dict, json_output=True)
 
         assert exit_code == 1
+
+    def test_output_result_text_success_with_data(self) -> None:
+        """Verifies _output_result text mode outputs data to stdout."""
+        from ai_session_tracker_mcp.cli import _output_result
+
+        result_dict = {
+            "success": True,
+            "message": "Operation completed",
+            "data": {"count": 5, "status": "ok"},
+        }
+
+        captured = StringIO()
+        with (
+            patch.object(sys, "stdout", captured),
+            patch("ai_session_tracker_mcp.cli._log"),  # _log uses logger, not stdout
+        ):
+            exit_code = _output_result(result_dict, json_output=False)
+
+        assert exit_code == 0
+        output = captured.getvalue()
+        assert "count: 5" in output
+        assert "status: ok" in output
+
+    def test_output_result_text_failure_with_error(self) -> None:
+        """Verifies _output_result text mode outputs error details to stdout."""
+        from ai_session_tracker_mcp.cli import _output_result
+
+        result_dict = {
+            "success": False,
+            "message": "Operation failed",
+            "error": "Database connection error",
+        }
+
+        captured = StringIO()
+        with (
+            patch.object(sys, "stdout", captured),
+            patch("ai_session_tracker_mcp.cli._log"),
+        ):
+            exit_code = _output_result(result_dict, json_output=False)
+
+        assert exit_code == 1
+        output = captured.getvalue()
+        assert "Database connection error" in output
+
+    def test_output_result_text_success_no_data(self) -> None:
+        """Verifies _output_result handles empty/missing data field."""
+        from ai_session_tracker_mcp.cli import _output_result
+
+        result_dict = {
+            "success": True,
+            "message": "Operation completed",
+            # No 'data' field - tests the 713->712 branch
+        }
+
+        captured = StringIO()
+        with (
+            patch.object(sys, "stdout", captured),
+            patch("ai_session_tracker_mcp.cli._log"),
+        ):
+            exit_code = _output_result(result_dict, json_output=False)
+
+        assert exit_code == 0
+        # Should not print any data fields (empty output from print())
+        output = captured.getvalue()
+        assert output == ""
+
+
+class TestGenerateMcpServerConfig:
+    """Tests for _generate_mcp_server_config helper."""
+
+    def test_generate_config_with_env_example(self) -> None:
+        """Verifies config includes env example when requested."""
+        from ai_session_tracker_mcp.cli import _generate_mcp_server_config
+
+        server_config = {"command": "/usr/bin/server", "args": ["run"]}
+        result = _generate_mcp_server_config(server_config, with_env_example=True)
+
+        assert result["command"] == "/usr/bin/server"
+        assert result["args"] == ["run"]
+        assert "_env_example" in result
+        assert "AI_MAX_SESSION_DURATION_HOURS" in result["_env_example"]
+
+    def test_generate_config_without_env_example(self) -> None:
+        """Verifies config excludes env example when not requested."""
+        from ai_session_tracker_mcp.cli import _generate_mcp_server_config
+
+        server_config = {"command": "/usr/bin/server", "args": ["run"]}
+        result = _generate_mcp_server_config(server_config, with_env_example=False)
+
+        assert result["command"] == "/usr/bin/server"
+        assert result["args"] == ["run"]
+        assert "_env_example" not in result
+
+
+class TestGlobalInstallPlatforms:
+    """Tests for global install on different platforms."""
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
+    def test_global_install_windows(self, mock_fs: MockFileSystem) -> None:
+        """Verifies global install uses Windows path on Windows."""
+        import json
+
+        from ai_session_tracker_mcp.cli import run_install
+
+        with patch(
+            "pathlib.Path.home", return_value=MagicMock(__str__=lambda _: "C:\\Users\\user")
+        ):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                global_install=True,
+            )
+
+        # Verify Windows global mcp.json was created
+        win_config_path = "C:\\Users\\user/AppData/Roaming/Code/User/mcp.json"
+        assert mock_fs.exists(win_config_path)
+        config_content = mock_fs.get_file(win_config_path)
+        config = json.loads(config_content)
+        assert "ai-session-tracker" in config["servers"]
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only test")
+    def test_global_install_macos(self, mock_fs: MockFileSystem) -> None:
+        """Verifies global install uses macOS path on macOS."""
+        import json
+
+        from ai_session_tracker_mcp.cli import run_install
+
+        with patch("pathlib.Path.home", return_value=MagicMock(__str__=lambda _: "/Users/user")):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                global_install=True,
+            )
+
+        # Verify macOS global mcp.json was created
+        mac_config_path = "/Users/user/Library/Application Support/Code/User/mcp.json"
+        assert mock_fs.exists(mac_config_path)
+        config_content = mock_fs.get_file(mac_config_path)
+        config = json.loads(config_content)
+        assert "ai-session-tracker" in config["servers"]
+
+
+class TestInstallServiceIntegration:
+    """Tests for service installation during install command."""
+
+    def test_install_with_service_success(self, mock_fs: MockFileSystem) -> None:
+        """Verifies install --service installs service successfully."""
+        from ai_session_tracker_mcp.cli import run_install
+
+        mock_manager = MagicMock()
+        mock_manager.install.return_value = True
+
+        with patch("ai_session_tracker_mcp.service.get_service_manager", return_value=mock_manager):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                service=True,
+            )
+
+        mock_manager.install.assert_called_once()
+
+    def test_install_with_service_failure(self, mock_fs: MockFileSystem) -> None:
+        """Verifies install --service handles installation failure."""
+        from ai_session_tracker_mcp.cli import run_install
+
+        mock_manager = MagicMock()
+        mock_manager.install.return_value = False
+
+        with patch("ai_session_tracker_mcp.service.get_service_manager", return_value=mock_manager):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                service=True,
+            )
+
+        mock_manager.install.assert_called_once()
+
+    def test_install_with_service_not_supported(self, mock_fs: MockFileSystem) -> None:
+        """Verifies install --service handles unsupported platform."""
+        from ai_session_tracker_mcp.cli import run_install
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            side_effect=NotImplementedError("Service not supported on this platform"),
+        ):
+            # Should not raise, just log warning
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                service=True,
+            )
+
+
+class TestRunSessionActiveErrors:
+    """Tests for run_session_active error handling."""
+
+    def test_run_session_active_failure(self) -> None:
+        """Verifies run_session_active handles service failure."""
+        from ai_session_tracker_mcp.cli import run_session_active
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=False,
+            message="Failed to get sessions",
+            error="Database unavailable",
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_active_sessions.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_active()
+
+            assert result == 1
+
+    def test_run_session_active_json_output(self, capsys: Any) -> None:
+        """Verifies run_session_active outputs JSON when json_output=True."""
+        from ai_session_tracker_mcp.cli import run_session_active
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=True,
+            message="Found 1 active session(s)",
+            data={"active_sessions": [{"session_id": "test_123"}]},
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_active_sessions.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_active(json_output=True)
+
+            assert result == 0
+            captured = capsys.readouterr()
+            assert '"success": true' in captured.out
+            assert '"active_sessions"' in captured.out
+
+    def test_run_session_active_failure_with_error_output(self, capsys: Any) -> None:
+        """Verifies run_session_active prints error message on failure."""
+        from ai_session_tracker_mcp.cli import run_session_active
+        from ai_session_tracker_mcp.session_service import ServiceResult
+
+        mock_result = ServiceResult(
+            success=False,
+            message="Failed to get sessions",
+            error="Database unavailable",
+        )
+
+        with patch("ai_session_tracker_mcp.session_service.SessionService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_active_sessions.return_value = mock_result
+            mock_service_cls.return_value = mock_service
+
+            result = run_session_active()
+
+            assert result == 1
+            captured = capsys.readouterr()
+            assert "Database unavailable" in captured.out
+
+
+class TestCopyAgentFilesDirectories:
+    """Tests for _copy_agent_files handling directories."""
+
+    def test_copy_agent_files_skips_directories(self, mock_fs: MockFileSystem) -> None:
+        """Verifies _copy_agent_files skips directories in iterdir."""
+        from ai_session_tracker_mcp.cli import _copy_agent_files
+
+        # Create source with both files and directories
+        mock_fs.makedirs("/pkg/agent_files/agents")
+        mock_fs.set_file("/pkg/agent_files/agents/test.agent.md", "content")
+        mock_fs.makedirs("/pkg/agent_files/agents/subdir")  # Directory to skip
+
+        # Override is_file to return False for the subdir
+        original_is_file = mock_fs.is_file
+
+        def is_file_with_dir(path: str) -> bool:
+            if path.endswith("subdir"):
+                return False
+            return original_is_file(path)
+
+        mock_fs.is_file = is_file_with_dir
+
+        _copy_agent_files(mock_fs, "/pkg/agent_files", "/project/.github", "/project")
+
+        # File should be copied
+        assert mock_fs.exists("/project/.github/agents/test.agent.md")
+        # Directory should not create a file
+        assert not mock_fs.exists("/project/.github/agents/subdir")

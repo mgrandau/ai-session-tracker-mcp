@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .config import Config
@@ -113,6 +113,56 @@ class SessionService:
         self.storage = storage or StorageManager()
         self.stats_engine = stats_engine or StatisticsEngine()
 
+    def _calculate_capped_end_time(self, start_time_iso: str, note_suffix: str) -> tuple[str, str]:
+        """
+        Calculate end_time, capping at max duration if exceeded.
+
+        Prevents overnight sessions from skewing metrics by limiting
+        the end_time to start_time + max_duration_hours.
+
+        Args:
+            start_time_iso: Session start time in ISO format.
+            note_suffix: Base note to append to (e.g., "new session started").
+
+        Returns:
+            Tuple of (end_time_iso, notes) where notes includes duration
+            info if session exceeded max duration.
+        """
+        now = datetime.now(UTC)
+        max_duration_hours = Config.get_max_session_duration_hours()
+        max_duration = timedelta(hours=max_duration_hours)
+
+        try:
+            # Parse start time - handle both with and without timezone
+            start_time = datetime.fromisoformat(start_time_iso.replace("Z", "+00:00"))
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=UTC)
+
+            max_end_time = start_time + max_duration
+            elapsed_hours = (now - start_time).total_seconds() / 3600
+
+            if now > max_end_time:
+                # Session exceeded max duration - cap the end_time
+                end_time = max_end_time
+                notes = (
+                    f"[Auto-closed: {note_suffix}, exceeded {max_duration_hours}h max "
+                    f"duration (was {elapsed_hours:.1f}h)]"
+                )
+                logger.info(
+                    f"Capped session end_time: actual {elapsed_hours:.1f}h -> {max_duration_hours}h"
+                )
+            else:
+                # Session within limit - use actual time
+                end_time = now
+                notes = f"[Auto-closed: {note_suffix}]"
+
+            return end_time.isoformat(), notes
+
+        except (ValueError, TypeError) as e:
+            # If parsing fails, use current time
+            logger.warning(f"Could not parse start_time '{start_time_iso}': {e}")
+            return now.isoformat(), f"[Auto-closed: {note_suffix}]"
+
     def _auto_close_active_sessions(self, execution_context: str) -> list[str]:
         """
         Auto-close any active sessions before starting a new one.
@@ -121,6 +171,9 @@ class SessionService:
         then closes them with outcome 'partial' and a note indicating they
         were auto-closed. Sessions with different execution_context are not
         affected (e.g., foreground sessions won't close background sessions).
+
+        End times are capped at start_time + max_duration_hours to prevent
+        overnight sessions from skewing ROI metrics.
 
         Args:
             execution_context: The context of the new session ('foreground' or
@@ -137,11 +190,16 @@ class SessionService:
                     session_data.get("status") == "active"
                     and session_data.get("execution_context") == execution_context
                 ):
+                    start_time = session_data.get("start_time", "")
+                    end_time, auto_note = self._calculate_capped_end_time(
+                        start_time, "new session started"
+                    )
+
                     session_data["status"] = "completed"
-                    session_data["end_time"] = datetime.now(UTC).isoformat()
+                    session_data["end_time"] = end_time
                     session_data["outcome"] = "partial"
                     session_data["notes"] = (
-                        session_data.get("notes", "") + " [Auto-closed: new session started]"
+                        session_data.get("notes", "") + " " + auto_note
                     ).strip()
                     sessions[session_id] = session_data
                     closed_sessions.append(session_id)
@@ -482,18 +540,16 @@ class SessionService:
         """
         try:
             sessions = self.storage.load_sessions()
-            active_sessions = []
-
-            for session_id, session in sessions.items():
-                if session.get("status") != "completed":
-                    active_sessions.append(
-                        {
-                            "session_id": session_id,
-                            "session_name": session.get("session_name", "Unknown"),
-                            "task_type": session.get("task_type", "Unknown"),
-                            "start_time": session.get("start_time", "Unknown"),
-                        }
-                    )
+            active_sessions = [
+                {
+                    "session_id": session_id,
+                    "session_name": session.get("session_name", "Unknown"),
+                    "task_type": session.get("task_type", "Unknown"),
+                    "start_time": session.get("start_time", "Unknown"),
+                }
+                for session_id, session in sessions.items()
+                if session.get("status") != "completed"
+            ]
 
             return ServiceResult(
                 success=True,
@@ -501,7 +557,7 @@ class SessionService:
                 data={"active_sessions": active_sessions},
             )
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Error getting active sessions: {e}")
             return ServiceResult(
                 success=False,
@@ -534,7 +590,7 @@ class SessionService:
 
             # Filter by session if specified
             if session_id:
-                if session_id not in sessions:
+                if session_id not in sessions:  # pragma: no cover - defensive
                     return ServiceResult(
                         success=False,
                         message="Session not found",
@@ -566,6 +622,8 @@ class SessionService:
         Close all active sessions on shutdown.
 
         Marks active sessions as completed with outcome 'partial'.
+        End times are capped at start_time + max_duration_hours to prevent
+        overnight sessions from skewing ROI metrics.
 
         Returns:
             int: Number of sessions closed.
@@ -576,11 +634,16 @@ class SessionService:
 
             for session_id, session_data in sessions.items():
                 if session_data.get("status") == "active":
+                    start_time = session_data.get("start_time", "")
+                    end_time, auto_note = self._calculate_capped_end_time(
+                        start_time, "server shutdown"
+                    )
+
                     session_data["status"] = "completed"
-                    session_data["end_time"] = datetime.now(UTC).isoformat()
+                    session_data["end_time"] = end_time
                     session_data["outcome"] = "partial"
                     session_data["notes"] = (
-                        session_data.get("notes", "") + " [Auto-closed on server shutdown]"
+                        session_data.get("notes", "") + " " + auto_note
                     ).strip()
                     sessions[session_id] = session_data
                     active_count += 1

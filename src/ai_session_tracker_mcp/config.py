@@ -111,6 +111,17 @@ class Config:
     """
 
     # =========================================================================
+    # SESSION DURATION LIMITS
+    # =========================================================================
+    MAX_SESSION_DURATION_HOURS: ClassVar[float] = 4.0
+    """
+    Maximum session duration in hours for auto-close capping.
+    When a session exceeds this duration, end_time is capped at
+    start_time + max_duration instead of actual close time.
+    Prevents overnight sessions from skewing ROI metrics.
+    """
+
+    # =========================================================================
     # ISSUE SEVERITY LEVELS
     # =========================================================================
     SEVERITY_LEVELS: ClassVar[frozenset[str]] = frozenset(
@@ -145,6 +156,9 @@ class Config:
 
     ENV_PROJECT_ID: ClassVar[str] = "AI_PROJECT_ID"
     """Environment variable to set project identifier for S3 paths."""
+
+    ENV_MAX_SESSION_DURATION: ClassVar[str] = "AI_MAX_SESSION_DURATION_HOURS"
+    """Environment variable to override max session duration (hours)."""
 
     # =========================================================================
     # COMPUTED PROPERTIES
@@ -214,6 +228,7 @@ class Config:
     # apply to them. This enables deterministic testing without environment variables.
     _s3_backup_override: ClassVar[bool | None] = None
     _project_id_override: ClassVar[str | None] = None
+    _max_session_duration_override: ClassVar[float | None] = None
 
     @classmethod
     def is_s3_backup_enabled(cls) -> bool:
@@ -278,25 +293,61 @@ class Config:
         return os.environ.get(cls.ENV_PROJECT_ID, os.path.basename(os.getcwd()))
 
     @classmethod
+    def get_max_session_duration_hours(cls) -> float:
+        """
+        Get the maximum session duration in hours for auto-close capping.
+
+        Uses a priority system: test overrides first, then environment
+        variable, then falls back to the default constant. When sessions
+        exceed this duration, their end_time is capped at start_time + max
+        to prevent overnight sessions from skewing metrics.
+
+        Business context: Sessions left open overnight would show inflated
+        durations (12+ hours). Capping ensures ROI metrics reflect actual
+        work time, not idle time.
+
+        Args:
+            None: Class method, accesses class variable and env var.
+
+        Returns:
+            Maximum session duration in hours. Default: 4.0.
+
+        Example:
+            >>> Config.get_max_session_duration_hours()
+            4.0
+        """
+        if cls._max_session_duration_override is not None:
+            return cls._max_session_duration_override
+        env_value = os.environ.get(cls.ENV_MAX_SESSION_DURATION, "")
+        if env_value:
+            try:
+                return float(env_value)
+            except ValueError:
+                pass
+        return cls.MAX_SESSION_DURATION_HOURS
+
+    @classmethod
     def set_test_overrides(
         cls,
         s3_enabled: bool | None = None,
         project_id: str | None = None,
+        max_session_duration: float | None = None,
     ) -> None:
         """
         Set test overrides for environment-based settings.
 
-        Allows tests to control S3 and project ID settings without
-        modifying environment variables. Must call reset_test_overrides()
-        in test teardown to avoid affecting other tests.
+        Allows tests to control S3, project ID, and max session duration
+        settings without modifying environment variables. Must call
+        reset_test_overrides() in test teardown to avoid affecting other tests.
 
         Business context: Test isolation requires deterministic configuration.
-        This method enables testing S3 backup logic without requiring actual
-        AWS credentials or environment variable manipulation.
+        This method enables testing configuration-dependent logic without
+        requiring environment variable manipulation.
 
         Args:
             s3_enabled: Override for S3 backup enabled flag. None to clear.
             project_id: Override for project identifier. None to clear.
+            max_session_duration: Override for max session duration (hours). None to clear.
 
         Returns:
             None. Modifies class-level state.
@@ -309,6 +360,7 @@ class Config:
         """
         cls._s3_backup_override = s3_enabled
         cls._project_id_override = project_id
+        cls._max_session_duration_override = max_session_duration
 
     @classmethod
     def reset_test_overrides(cls) -> None:
@@ -339,6 +391,7 @@ class Config:
         """
         cls._s3_backup_override = None
         cls._project_id_override = None
+        cls._max_session_duration_override = None
 
     @classmethod
     @contextmanager
@@ -346,6 +399,7 @@ class Config:
         cls,
         s3_enabled: bool | None = None,
         project_id: str | None = None,
+        max_session_duration: float | None = None,
     ) -> Generator[None]:
         """
         Context manager for test overrides with automatic cleanup.
@@ -357,6 +411,7 @@ class Config:
         Args:
             s3_enabled: Override for S3 backup enabled flag. None to not override.
             project_id: Override for project identifier. None to not override.
+            max_session_duration: Override for max session duration (hours). None to not override.
 
         Yields:
             None. Configuration is modified for the duration of the context.
@@ -371,7 +426,7 @@ class Config:
             >>> # Automatically reset after context exit
         """
         try:
-            cls.set_test_overrides(s3_enabled, project_id)
+            cls.set_test_overrides(s3_enabled, project_id, max_session_duration)
             yield
         finally:
             cls.reset_test_overrides()

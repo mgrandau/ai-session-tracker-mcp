@@ -723,7 +723,7 @@ class TestStartSession:
         assert old_session is not None
         assert old_session["status"] == "completed"
         assert old_session["outcome"] == "partial"
-        assert "[Auto-closed: new session started]" in old_session["notes"]
+        assert "Auto-closed: new session started" in old_session["notes"]
         assert "end_time" in old_session
 
         # Verify the new session was created
@@ -800,12 +800,12 @@ class TestStartSession:
 
         assert session_1["status"] == "completed"
         assert session_1["outcome"] == "partial"
-        assert "[Auto-closed: new session started]" in session_1["notes"]
+        assert "Auto-closed: new session started" in session_1["notes"]
 
         assert session_2["status"] == "completed"
         assert session_2["outcome"] == "partial"
         assert "Some existing notes" in session_2["notes"]
-        assert "[Auto-closed: new session started]" in session_2["notes"]
+        assert "Auto-closed: new session started" in session_2["notes"]
 
         # Verify response includes both auto-closed sessions
         auto_closed = result["result"]["auto_closed_sessions"]
@@ -943,7 +943,7 @@ class TestStartSession:
 
         assert foreground_session["status"] == "completed"
         assert foreground_session["outcome"] == "partial"
-        assert "[Auto-closed: new session started]" in foreground_session["notes"]
+        assert "Auto-closed: new session started" in foreground_session["notes"]
 
         assert background_session["status"] == "active"
         assert background_session.get("outcome") is None
@@ -2778,3 +2778,240 @@ class TestMissingParameterErrors:
 
         assert "error" in result
         assert result["error"]["code"] == -32602
+
+
+class TestAdditionalCoverage:
+    """Tests for additional coverage of edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_boolop_complexity_calculation(self, server: SessionTrackerServer) -> None:
+        """Verifies complexity calculation includes BoolOp nodes (and/or).
+
+        Tests that boolean operators correctly add to cyclomatic complexity.
+        """
+        import os
+        import tempfile
+
+        # Create a session
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {"id": "test_session", "status": "active"}
+        server.storage.save_sessions(sessions)
+
+        # Code with BoolOp (and/or operators)
+        code = '''
+def func_with_boolops(x, y, z):
+    """Function with boolean operators."""
+    if x > 0 and y > 0 and z > 0:  # BoolOp with 3 values adds 2
+        return True
+    if x < 0 or y < 0:  # BoolOp with 2 values adds 1
+        return False
+    return None
+'''
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": "test_session",
+                    "file_path": path,
+                    "functions_modified": [
+                        {"name": "func_with_boolops", "modification_type": "added"}
+                    ],
+                },
+                1,
+            )
+            assert "result" in result
+            # Complexity: 1 (base) + 2 (if-statements) + BoolOp contributions
+            # average_complexity should reflect the BoolOp additions
+            assert result["result"]["average_complexity"] >= 4  # At least base + if + boolops
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_log_code_metrics_session_not_found(self, server: SessionTrackerServer) -> None:
+        """Verifies log_code_metrics returns error for non-existent session."""
+        import os
+        import tempfile
+
+        # Create a valid Python file
+        code = "def foo(): pass"
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": "nonexistent_session",
+                    "file_path": path,
+                    "functions_modified": [{"name": "foo", "modification_type": "added"}],
+                },
+                1,
+            )
+            assert "error" in result
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_get_active_sessions_exception_handling(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies get_active_sessions handles storage exceptions."""
+        from unittest.mock import MagicMock
+
+        # Make storage raise exception
+        server.storage.load_sessions = MagicMock(side_effect=Exception("Storage error"))
+
+        result = await server._handle_get_active_sessions({}, 1)
+
+        assert "error" in result
+        assert "Failed to get active sessions" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_log_code_metrics_initializes_code_metrics_list(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies log_code_metrics creates code_metrics list if not exists."""
+        import os
+        import tempfile
+
+        # Create session without code_metrics field
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            # No "code_metrics" key initially
+        }
+        server.storage.save_sessions(sessions)
+
+        # Create a Python file to analyze
+        code = "def simple(): pass"
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": "test_session",
+                    "file_path": path,
+                    "functions_modified": [{"name": "simple", "modification_type": "added"}],
+                },
+                1,
+            )
+            assert "result" in result
+
+            # Check that code_metrics was initialized and populated
+            updated_session = server.storage.get_session("test_session")
+            assert "code_metrics" in updated_session
+            assert len(updated_session["code_metrics"]) == 1
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_log_code_metrics_appends_to_existing_list(
+        self, server: SessionTrackerServer
+    ) -> None:
+        """Verifies log_code_metrics appends to existing code_metrics list."""
+        import os
+        import tempfile
+
+        # Create session WITH pre-existing code_metrics
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {
+            "id": "test_session",
+            "status": "active",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "code_metrics": [{"existing": "metric"}],  # Pre-existing entry
+        }
+        server.storage.save_sessions(sessions)
+
+        # Create a Python file to analyze
+        code = "def another(): pass"
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": "test_session",
+                    "file_path": path,
+                    "functions_modified": [{"name": "another", "modification_type": "added"}],
+                },
+                1,
+            )
+            assert "result" in result
+
+            # Check that code_metrics now has 2 entries (existing + new)
+            updated_session = server.storage.get_session("test_session")
+            assert len(updated_session["code_metrics"]) == 2
+            assert updated_session["code_metrics"][0] == {"existing": "metric"}
+        finally:
+            os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_docstring_parsing_full_coverage(self, server: SessionTrackerServer) -> None:
+        """Verifies documentation score calculation with full docstring.
+
+        Tests the branch where docstring exists and contains all sections.
+        """
+        import os
+        import tempfile
+
+        # Create session
+        sessions = server.storage.load_sessions()
+        sessions["test_session"] = {"id": "test_session", "status": "active"}
+        server.storage.save_sessions(sessions)
+
+        # Code with comprehensive docstring that triggers all doc score branches
+        code = '''
+def well_documented(x: int, y: str) -> bool:
+    """
+    A well-documented function that does something important.
+
+    This is a longer description that exceeds the 50 character minimum
+    for a good docstring length.
+
+    Args:
+        x: An integer parameter
+        y: A string parameter
+
+    Returns:
+        A boolean indicating success.
+
+    Raises:
+        ValueError: If x is negative.
+
+    Examples:
+        >>> well_documented(1, "hello")
+        True
+    """
+    if x < 0:
+        raise ValueError("x must be positive")
+    return True
+'''
+        fd, path = tempfile.mkstemp(suffix=".py")
+        os.write(fd, code.encode())
+        os.close(fd)
+
+        try:
+            result = await server._handle_log_code_metrics(
+                {
+                    "session_id": "test_session",
+                    "file_path": path,
+                    "functions_modified": [
+                        {"name": "well_documented", "modification_type": "added"}
+                    ],
+                },
+                1,
+            )
+            assert "result" in result
+            # Should have high doc score due to all sections present
+            # average_doc_quality tracks percentage (0-100 scale)
+            assert result["result"]["average_doc_quality"] >= 50
+        finally:
+            os.unlink(path)

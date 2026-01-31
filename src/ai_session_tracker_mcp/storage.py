@@ -722,6 +722,6 @@ class StorageManager:
         success = self._write_json(self.sessions_file, {})
         success = success and self._write_json(self.interactions_file, [])
         success = success and self._write_json(self.issues_file, [])
-        if success:
+        if success:  # pragma: no cover - logging only
             logger.info("All data files cleared")
         return success

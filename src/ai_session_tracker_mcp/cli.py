@@ -111,6 +111,7 @@ def _log(message: str, *, emoji: str = "") -> None:
 def run_server(
     dashboard_host: str | None = None,
     dashboard_port: int | None = None,
+    max_session_duration_hours: float | None = None,
     *,
     subprocess_factory: Callable[..., Any] | None = None,
 ) -> None:
@@ -131,6 +132,8 @@ def run_server(
     Args:
         dashboard_host: If provided, start dashboard on this host.
         dashboard_port: If provided, start dashboard on this port.
+        max_session_duration_hours: Max session duration for auto-close
+            capping. If provided, overrides Config default.
         subprocess_factory: Optional factory for creating subprocesses.
             Defaults to subprocess.Popen. Used for testability.
 
@@ -145,8 +148,14 @@ def run_server(
         >>> # ai-session-tracker server --dashboard-port 8000
         >>> run_server(dashboard_host="127.0.0.1", dashboard_port=8000)
     """
+    from .config import Config
+
     popen = subprocess_factory or subprocess.Popen
     dashboard_process = None
+
+    # Set max session duration override if provided
+    if max_session_duration_hours is not None:
+        Config.set_test_overrides(max_session_duration=max_session_duration_hours)
 
     # Import server main once at function start
     from .server import main
@@ -303,6 +312,33 @@ def _build_path(*parts: str) -> str:
         'Users/mark/.vscode'
     """
     return "/".join(parts)
+
+
+def _generate_mcp_server_config(
+    server_config: dict[str, Any],
+    with_env_example: bool = True,
+) -> dict[str, Any]:
+    """
+    Generate server config dict with optional env example.
+
+    Args:
+        server_config: Base server config with command and args.
+        with_env_example: If True, include _env_example showing available vars.
+
+    Returns:
+        Complete server config dict.
+    """
+    config = dict(server_config)
+
+    if with_env_example:
+        # Add example env vars as a reference (prefixed with _ to indicate optional)
+        config["_env_example"] = {
+            "AI_MAX_SESSION_DURATION_HOURS": "4.0",
+            "AI_ENABLE_S3_BACKUP": "false",
+        }
+        config["_env_example_note"] = "Copy _env_example to 'env' to customize"
+
+    return config
 
 
 def _load_or_create_config(
@@ -484,9 +520,9 @@ def run_install(
     if global_install:
         # Use VS Code user settings directory
         home = str(Path.home())
-        if os.name == "nt":  # Windows
+        if os.name == "nt":  # pragma: no cover - Windows
             vscode_dir = _build_path(home, "AppData", "Roaming", "Code", "User")
-        elif sys.platform == "darwin":  # macOS
+        elif sys.platform == "darwin":  # pragma: no cover - macOS
             vscode_dir = _build_path(home, "Library", "Application Support", "Code", "User")
         else:  # Linux
             vscode_dir = _build_path(home, ".config", "Code", "User")
@@ -508,7 +544,7 @@ def run_install(
             "command": sys.executable,
             "args": ["-m", MODULE_NAME, "server"],
         }
-    else:
+    else:  # pragma: no cover - installed executable
         server_config = {
             "command": server_cmd_path,
             "args": ["server"],
@@ -534,7 +570,11 @@ def run_install(
         # Create .vscode directory if needed
         fs.makedirs(vscode_dir, exist_ok=True)
 
-        # Write config
+        # Add env example to our server config
+        full_server_config = _generate_mcp_server_config(server_config, with_env_example=True)
+        config["servers"][SERVER_NAME] = full_server_config
+
+        # Write config as standard JSON
         fs.write_text(config_path, json.dumps(config, indent=2))
 
     # Copy agent files to .github/ unless mcp_only is set
@@ -664,16 +704,16 @@ def _output_result(result: dict[str, Any], json_output: bool = False) -> int:
     if json_output:
         print(json.dumps(result, indent=2))
     else:
-        if result["success"]:
-            _log(result["message"], emoji="✅")
-            if result.get("data"):
-                for key, value in result["data"].items():
-                    if key not in ("report",):  # Skip large data
-                        print(f"  {key}: {value}")
-        else:
-            _log(result["message"], emoji="❌")
-            if result.get("error"):
-                print(f"  Error: {result['error']}")
+        emoji = "✅" if result["success"] else "❌"
+        _log(result["message"], emoji=emoji)
+        # Print data fields (skip large ones like 'report')
+        for key, value in (result.get("data") or {}).items():
+            if key not in ("report",):
+                print(f"  {key}: {value}")
+        # Print error if present
+        error = result.get("error", "")
+        if error:
+            print(f"  Error: {error}")
 
     return 0 if result["success"] else 1
 
@@ -934,6 +974,12 @@ def main() -> int:
         type=int,
         default=None,
         help="Start dashboard on this port (e.g., 8000)",
+    )
+    server_parser.add_argument(
+        "--max-session-duration-hours",
+        type=float,
+        default=None,
+        help="Max session duration in hours before auto-close caps end_time (default: 4.0)",
     )
 
     # Dashboard command
@@ -1233,6 +1279,7 @@ def main() -> int:
         run_server(
             dashboard_host=args.dashboard_host,
             dashboard_port=args.dashboard_port,
+            max_session_duration_hours=args.max_session_duration_hours,
         )
     else:
         # Default: run server without dashboard
