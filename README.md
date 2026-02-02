@@ -158,7 +158,14 @@ The agent mode persists for your chat session.
 
 ### Codex Plugin (VS Code only)
 
-At the start of your conversation, type:
+**Important:** First enable IDE context access:
+
+1. In the Codex chat input, ensure **"Include IDE context"** is turned **ON**
+2. Look for a **blue icon** — this confirms Codex can see your IDE context (files, selections, workspace structure)
+
+Without IDE context enabled, the agent cannot access your workspace and session tracking may not function properly.
+
+Then at the start of your conversation, type:
 
 ```
 Use the Session Tracked Agent as the default for the rest of the conversation.
