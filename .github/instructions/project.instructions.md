@@ -16,3 +16,6 @@ The README badge auto-updates from GitHub releases - no manual badge edits neede
 - Tags must match pattern `vX.X.X` (e.g., `v1.0.3`)
 - `--generate-notes` auto-generates release notes from commits
 - Badge updates within minutes of release creation
+
+# Markdown
+All markdown files must pass linting. Fix all markdown linting errors before committing.
