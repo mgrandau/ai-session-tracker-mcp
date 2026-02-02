@@ -46,13 +46,15 @@ ai-session-tracker install
 ```
 
 This creates:
+
 - `.vscode/mcp.json` — MCP server configuration
 - `.github/instructions/` — AI instruction files
 - `.github/agents/` — VS Code custom agent definitions
 
 ### Full MCP Configuration Template
 
-For manual configuration or to enable all features, use this template in `.vscode/mcp.json`:
+For manual configuration or to enable all features, use this templatelick the **options menu** (next to the up arrow/return button)
+2. E in `.vscode/mcp.json`:
 
 ```json
 {
@@ -64,7 +66,8 @@ For manual configuration or to enable all features, use this template in `.vscod
         "--dashboard-host", "127.0.0.1",
         "--dashboard-port", "8050"
       ]
-    }
+    }lick the **options menu** (next to the up arrow/return button)
+2. E
   }
 }
 ```
@@ -72,7 +75,7 @@ For manual configuration or to enable all features, use this template in `.vscod
 **Available server arguments:**
 
 | Argument | Description | Default |
-|----------|-------------|---------|
+| -------- | ----------- | ------- |
 | `--dashboard-host` | Host for embedded web dashboard | *(disabled)* |
 | `--dashboard-port` | Port for embedded web dashboard | *(disabled)* |
 | `--max-session-duration-hours` | Max hours before auto-close caps session end_time | `4.0` |
@@ -82,7 +85,7 @@ For manual configuration or to enable all features, use this template in `.vscod
 Configure via `env` in your `mcp.json` or system environment:
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| -------- | ----------- | ------- |
 | `AI_MAX_SESSION_DURATION_HOURS` | Max session duration in hours | `4.0` |
 | `AI_ENABLE_S3_BACKUP` | Enable S3 backup of session data | `false` |
 | `AI_PROJECT_ID` | Project identifier for S3 paths | *(directory name)* |
@@ -113,24 +116,24 @@ Configure via `env` in your `mcp.json` or system environment:
 
 ### 1. Start a Session
 
-The MCP tools are available in VS Code Copilot Chat when using the "Session Tracked Agent" chat mode:
+The MCP tools are available in VS Code Copilot Chat when using the "Session Tracked Agent" chat mode (see [Enabling Agent Mode](#-enabling-agent-mode)).
 
-```
-@session Start a new session for "Implement user authentication"
+Once enabled, simply describe your task and the agent handles session tracking automatically:
+
+```text
+Implement user authentication
 ```
 
 ### 2. Log Interactions
 
-Interactions are logged automatically by the agent, or manually:
-
-```
-@session Log this interaction with rating 4
-```
+Interactions are logged automatically by the agent as you work. Each prompt/response pair is captured with context.
 
 ### 3. End Session
 
-```
-@session End the session with outcome "success"
+When you're done, the agent closes the session with the appropriate outcome. You can also explicitly request:
+
+```text
+End the session as success
 ```
 
 ### 4. View Dashboard
@@ -167,7 +170,7 @@ Without IDE context enabled, the agent cannot access your workspace and session 
 
 Then at the start of your conversation, type:
 
-```
+```text
 Use the Session Tracked Agent as the default for the rest of the conversation.
 ```
 
@@ -242,7 +245,7 @@ ai-session-tracker end \
 ### Command Reference
 
 | Command | Description | Required Args |
-|---------|-------------|---------------|
+| ------- | ----------- | ------------- |
 | `start` | Start a new session | `--name`, `--type`, `--model`, `--mins`, `--source` |
 | `log` | Log an interaction | `--session-id`, `--prompt`, `--summary`, `--rating` |
 | `end` | End a session | `--session-id`, `--outcome` |
@@ -272,6 +275,7 @@ Sessions track an **execution context** (`foreground` or `background`) to enable
 **Why this matters:** When you start a new session, any previous *active* session with the **same** execution context is auto-closed with outcome `partial`. Sessions with different contexts are unaffected.
 
 This allows you to:
+
 - Run background batch processes via CLI while interactively using MCP
 - Avoid accidentally closing automation sessions when starting interactive work
 - Keep foreground and background metrics separate
@@ -296,7 +300,7 @@ ai-session-tracker service uninstall # Remove the service
 ### Platform Support
 
 | Platform | Service Type | Location |
-|----------|--------------|----------|
+| -------- | ------------ | -------- |
 | Linux | systemd user service | `~/.config/systemd/user/ai-session-tracker.service` |
 | macOS | launchd user agent | `~/Library/LaunchAgents/com.ai-session-tracker.mcp.plist` |
 | Windows | Task Scheduler | `AISessionTracker` scheduled task |
@@ -306,7 +310,7 @@ ai-session-tracker service uninstall # Remove the service
 ## 🔧 MCP Tools
 
 | Tool | Description |
-|------|-------------|
+| ---- | ----------- |
 | `start_ai_session` | Begin a new tracking session |
 | `log_ai_interaction` | Record a prompt/response exchange |
 | `end_ai_session` | Complete session with outcome |
@@ -319,7 +323,7 @@ ai-session-tracker service uninstall # Remove the service
 
 ## 📁 Project Structure
 
-```
+```text
 ai-session-tracker-mcp/
 ├── src/ai_session_tracker_mcp/    # Main package
 │   ├── server.py                  # MCP server implementation
@@ -330,7 +334,7 @@ ai-session-tracker-mcp/
 │   ├── cli.py                     # Command-line interface
 │   ├── web/                       # FastAPI dashboard
 │   └── agent_files/               # VS Code integration files
-├── tests/                         # Test suite (414 tests)
+├── tests/                         # Test suite (564 tests)
 └── utils/                         # Development utilities
 ```
 
@@ -340,10 +344,10 @@ ai-session-tracker-mcp/
 
 Detailed AI-readable architecture docs for each component:
 
-| Component | Documentation |
-|-----------|---------------|
+| Component    | Documentation                                                                |
+| ------------ | ---------------------------------------------------------------------------- |
 | Main Package | [src/ai_session_tracker_mcp/README.md](src/ai_session_tracker_mcp/README.md) |
-| Test Suite | [tests/README.md](tests/README.md) |
+| Test Suite   | [tests/README.md](tests/README.md)                                           |
 
 ---
 
@@ -369,7 +373,7 @@ pdm run check-all
 ### Available Scripts
 
 | Command | Description |
-|---------|-------------|
+| ------- | ----------- |
 | `pdm run test` | Run pytest |
 | `pdm run test-cov` | Run tests with coverage |
 | `pdm run lint` | Run ruff linter |
@@ -384,7 +388,7 @@ pdm run check-all
 
 Session data is stored in `.ai_sessions/` in your project root:
 
-```
+```text
 .ai_sessions/
 ├── sessions.json      # Session metadata
 ├── interactions.json  # Logged interactions
@@ -412,6 +416,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 ## 🤝 Contributing
 
 Contributions welcome! Please ensure:
+
 - All tests pass (`pdm run test`)
 - Code is formatted (`pdm run format`)
 - No lint errors (`pdm run lint`)
