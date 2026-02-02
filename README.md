@@ -144,6 +144,30 @@ ai-session-tracker dashboard
 
 ---
 
+## 🤖 Enabling Agent Mode
+
+After installation, enable the Session Tracked Agent to start automatic session tracking:
+
+### GitHub Copilot (VS Code & Visual Studio)
+
+1. Open Copilot Chat
+2. Click the agent dropdown (top of chat panel)
+3. Select **"Session Tracked Agent"**
+
+The agent mode persists for your chat session.
+
+### Codex Plugin (VS Code only)
+
+At the start of your conversation, type:
+
+```
+Use the Session Tracked Agent as the default for the rest of the conversation.
+```
+
+Codex will then track sessions automatically for all subsequent interactions.
+
+---
+
 ## 🛠️ CLI Commands
 
 ```bash
