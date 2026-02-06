@@ -208,3 +208,4 @@ __marimo__/
 .ai_sessions/
 utilities/*.json
 pdm.lock
+.vscode/mcp.json
