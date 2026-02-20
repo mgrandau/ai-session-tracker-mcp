@@ -413,6 +413,14 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
+## 💬 Community
+
+Join the Discord to discuss AI productivity tracking, share your metrics, and get help:
+
+[![Discord](https://img.shields.io/discord/1471362262282535078?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/2KqjHvh5)
+
+---
+
 ## 🤝 Contributing
 
 Contributions welcome! Please ensure:
