@@ -70,3 +70,46 @@ Precedence: `mcp.json` env block → shell environment → default (`.ai_session
 ### What we deliberately left out
 
 No auto-discovery, no push mechanism, no aggregation logic in the server itself. The server stays dumb — it just writes files. The sync is the user's responsibility. This keeps the blast radius small: a misconfigured `AI_OUTPUT_DIR` can only affect file writes, not the MCP protocol or session logic.
+
+---
+
+## Issue 15: Auto-capture developer and project identifiers in session JSON
+
+### The problem
+
+Every session record needs to know who wrote it and which project it belongs to. Without this, aggregated data from `AI_OUTPUT_DIR` is anonymous — you can count sessions but can't attribute them to a developer or project.
+
+### What we considered
+
+**Option A: MCP server auto-detects at startup**
+The server could read `os.getcwd()` for project and `git config user.name` for developer when it starts. Works for local per-project installs (VS Code launches the server from the project root). Breaks for global service installs where the server starts from a fixed location unrelated to any project.
+
+**Option B: Environment variables**
+`AI_DEVELOPER` and `AI_PROJECT` as env vars in `mcp.json`. Discarded — `AI_PROJECT` was previously used as an S3 path helper (removed in #14) and the boundary is wrong. `AI_DEVELOPER` in a per-project `mcp.json` risks committing someone's personal identity to git.
+
+**Option C: Agent resolves and passes to `start_ai_session`**
+Instructions tell the agent to run `git config user.name` and read the workspace folder. Agent passes them as parameters. Works in all cases (local and global server). No hallucination risk because the agent executes deterministic commands, not reasoning about values. This is the approach we're going with.
+
+### Design outcome
+
+**Developer identity** — resolved by the agent at conversation start via `git config user.name`. This is the same name the developer set intentionally for git commits. No new config needed. No hallucination risk.
+
+**Project identity** — stored in `.ai_sessions.yaml` in the project root (not in the `.ai_sessions/` data directory, which can be redirected by `AI_OUTPUT_DIR`). Written by the install command at setup time. Contains only `project: my-api`. Committed to git so the whole team shares the same project name.
+
+**Why the split:**
+- `project` is per-repo and shared → committed config file in root
+- `developer` is per-machine and personal → never written to a file, always read fresh from `git config user.name`
+
+This avoids any risk of accidentally committing another person's developer name.
+
+### Implementation plan
+
+1. **MCP tool** — add optional `developer` and `project` parameters to `start_ai_session`, store in session JSON
+2. **Session model** — add `developer` and `project` fields
+3. **Install command** — write `.ai_sessions.yaml` with detected project name (`os.path.basename(os.getcwd())`)
+4. **Session tracking instructions** — update to read `.ai_sessions.yaml` for project, run `git config user.name` for developer, pass both to `start_ai_session`
+5. **Fallback** — if `.ai_sessions.yaml` doesn't exist (pre-existing installs), fall back to workspace folder name
+
+### What we deliberately left out
+
+No server-side auto-detection. No new environment variables. No per-machine config file for developer identity. The git config is the source of truth for who the developer is — it's already set, already authoritative, already cross-platform.
