@@ -131,9 +131,10 @@ class Session:
     context: str
     start_time: str
     model_name: str
-    human_time_estimate_minutes: float
+    initial_estimate_minutes: float
     estimate_source: str
     status: str = "active"
+    final_estimate_minutes: float | None = None
     execution_context: str = "foreground"
     end_time: str | None = None
     outcome: str | None = None
@@ -150,7 +151,7 @@ class Session:
         name: str,
         task_type: str,
         model_name: str,
-        human_time_estimate_minutes: float,
+        initial_estimate_minutes: float,
         estimate_source: str,
         context: str = "",
         execution_context: str = "foreground",
@@ -190,14 +191,16 @@ class Session:
             context=context,
             start_time=_now_iso(),
             model_name=model_name,
-            human_time_estimate_minutes=human_time_estimate_minutes,
+            initial_estimate_minutes=initial_estimate_minutes,
             estimate_source=estimate_source,
             execution_context=execution_context,
             developer=developer,
             project=project,
         )
 
-    def end(self, outcome: str, notes: str = "") -> None:
+    def end(
+        self, outcome: str, notes: str = "", final_estimate_minutes: float | None = None
+    ) -> None:
         """
         Mark this session as completed with outcome and timestamp.
 
@@ -229,6 +232,8 @@ class Session:
         self.end_time = _now_iso()
         self.outcome = outcome
         self.notes = notes
+        if final_estimate_minutes is not None:
+            self.final_estimate_minutes = final_estimate_minutes
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -266,8 +271,9 @@ class Session:
             "context": self.context,
             "start_time": self.start_time,
             "model_name": self.model_name,
-            "human_time_estimate_minutes": self.human_time_estimate_minutes,
+            "initial_estimate_minutes": self.initial_estimate_minutes,
             "estimate_source": self.estimate_source,
+            "final_estimate_minutes": self.final_estimate_minutes,
             "status": self.status,
             "execution_context": self.execution_context,
             "end_time": self.end_time,
@@ -316,8 +322,12 @@ class Session:
             context=data.get("context", ""),
             start_time=data.get("start_time", ""),
             model_name=data.get("model_name", "unknown"),
-            human_time_estimate_minutes=data.get("human_time_estimate_minutes", 0.0),
+            initial_estimate_minutes=data.get(
+                "initial_estimate_minutes",
+                data.get("human_time_estimate_minutes", 0.0),
+            ),
             estimate_source=data.get("estimate_source", "unknown"),
+            final_estimate_minutes=data.get("final_estimate_minutes"),
             status=data.get("status", "active"),
             execution_context=data.get("execution_context", "foreground"),
             end_time=data.get("end_time"),

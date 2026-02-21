@@ -674,8 +674,12 @@ class StatisticsEngine:
             if session.get("status") == "completed":
                 duration = self.calculate_session_duration_minutes(session)
                 total_ai_minutes += duration
-                # Use actual human estimate from session
-                human_estimate = session.get("human_time_estimate_minutes", 0)
+                # Use final estimate if available, else initial (or legacy field name)
+                human_estimate = (
+                    session.get("final_estimate_minutes")
+                    or session.get("initial_estimate_minutes")
+                    or session.get("human_time_estimate_minutes", 0)
+                )
                 total_human_estimate_minutes += human_estimate
                 completed_sessions += 1
 

@@ -278,7 +278,7 @@ class SessionService:
                 name=name,
                 task_type=task_type,
                 model_name=model_name,
-                human_time_estimate_minutes=float(human_time_estimate_minutes),
+                initial_estimate_minutes=float(human_time_estimate_minutes),
                 estimate_source=estimate_source,
                 context=context,
                 execution_context=execution_context,
@@ -299,7 +299,7 @@ class SessionService:
                     "session_id": session.id,
                     "task_type": session.task_type,
                     "model_name": session.model_name,
-                    "human_time_estimate_minutes": session.human_time_estimate_minutes,
+                    "initial_estimate_minutes": session.initial_estimate_minutes,
                     "estimate_source": session.estimate_source,
                     "execution_context": session.execution_context,
                     "auto_closed_sessions": auto_closed,
@@ -397,6 +397,7 @@ class SessionService:
         session_id: str,
         outcome: str,
         notes: str = "",
+        final_estimate_minutes: float | None = None,
     ) -> ServiceResult:
         """
         End a tracking session.
@@ -434,6 +435,8 @@ class SessionService:
             session_data["end_time"] = datetime.now(UTC).isoformat()
             session_data["outcome"] = outcome
             session_data["notes"] = notes
+            if final_estimate_minutes is not None:
+                session_data["final_estimate_minutes"] = final_estimate_minutes
 
             self.storage.update_session(session_id, session_data)
 

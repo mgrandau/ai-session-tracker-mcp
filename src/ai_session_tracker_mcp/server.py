@@ -226,7 +226,7 @@ class SessionTrackerServer:
                             "type": "string",
                             "description": "AI model being used (e.g., 'claude-opus-4-20250514')",
                         },
-                        "human_time_estimate_minutes": {
+                        "initial_estimate_minutes": {
                             "type": "number",
                             "description": "Estimated minutes for a human to complete this task",
                         },
@@ -255,7 +255,7 @@ class SessionTrackerServer:
                         "session_name",
                         "task_type",
                         "model_name",
-                        "human_time_estimate_minutes",
+                        "initial_estimate_minutes",
                         "estimate_source",
                     ],
                 },
@@ -329,6 +329,12 @@ class SessionTrackerServer:
                             "type": "string",
                             "description": "Summary notes about the session",
                             "default": "",
+                        },
+                        "final_estimate_minutes": {
+                            "type": "number",
+                            "description": "Revised estimate: (insertions + deletions) × 10 ÷ 50,"
+                            " rounded up to nearest bucket",
+                            "default": None,
                         },
                     },
                     "required": ["session_id", "outcome"],
@@ -468,7 +474,7 @@ class SessionTrackerServer:
             name=args.get("session_name", ""),
             task_type=args.get("task_type", ""),
             model_name=args.get("model_name", ""),
-            human_time_estimate_minutes=float(args.get("human_time_estimate_minutes", 0)),
+            human_time_estimate_minutes=float(args.get("initial_estimate_minutes", 0)),
             estimate_source=args.get("estimate_source", ""),
             context=args.get("context", ""),
             execution_context="foreground",
@@ -494,7 +500,7 @@ class SessionTrackerServer:
         response_text = f"""
 ✅ Session Started: {session_id}
 Type: {data.get("task_type")} | Model: {data.get("model_name")}
-Estimate: {data.get("human_time_estimate_minutes", 0):.0f}min ({data.get("estimate_source")})
+Estimate: {data.get("initial_estimate_minutes", 0):.0f}min ({data.get("estimate_source")})
 {auto_close_notice}
 ⚠️ Log interactions! Call log_ai_interaction(session_id, prompt, rating 1-5) after responses.
 """
@@ -569,6 +575,7 @@ Session: {total} interactions, avg {avg_eff:.1f}/5
                 session_id=args["session_id"],
                 outcome=args["outcome"],
                 notes=args.get("notes", ""),
+                final_estimate_minutes=args.get("final_estimate_minutes"),
             )
 
             if not result.success:

@@ -826,6 +826,7 @@ def run_session_end(
     session_id: str,
     outcome: str,
     notes: str = "",
+    final_estimate_minutes: float | None = None,
     *,
     json_output: bool = False,
 ) -> int:
@@ -850,6 +851,7 @@ def run_session_end(
         session_id=session_id,
         outcome=outcome,
         notes=notes,
+        final_estimate_minutes=final_estimate_minutes,
     )
     return _output_result(result.to_dict(), json_output)
 
@@ -1193,6 +1195,13 @@ def main() -> int:
         help="Summary notes about the session",
     )
     end_parser.add_argument(
+        "--final-estimate",
+        dest="final_estimate_minutes",
+        type=float,
+        default=None,
+        help="Revised estimate in minutes: (insertions + deletions) x 10 / 50, rounded up",
+    )
+    end_parser.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
@@ -1288,6 +1297,7 @@ def main() -> int:
             session_id=args.session_id,
             outcome=args.outcome,
             notes=args.notes,
+            final_estimate_minutes=args.final_estimate_minutes,
             json_output=args.json_output,
         )
     elif args.command == "flag":

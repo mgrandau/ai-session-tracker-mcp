@@ -278,7 +278,7 @@ class TestToolDefinitions:
         Assertion Strategy:
         Validates all five required parameters are defined:
         - session_name, task_type, model_name in properties
-        - human_time_estimate_minutes, estimate_source in properties
+        - initial_estimate_minutes, estimate_source in properties
         - All five in required array
 
         Testing Principle:
@@ -288,12 +288,12 @@ class TestToolDefinitions:
         assert "session_name" in schema["properties"]
         assert "task_type" in schema["properties"]
         assert "model_name" in schema["properties"]
-        assert "human_time_estimate_minutes" in schema["properties"]
+        assert "initial_estimate_minutes" in schema["properties"]
         assert "estimate_source" in schema["properties"]
         assert "session_name" in schema["required"]
         assert "task_type" in schema["required"]
         assert "model_name" in schema["required"]
-        assert "human_time_estimate_minutes" in schema["required"]
+        assert "initial_estimate_minutes" in schema["required"]
         assert "estimate_source" in schema["required"]
         assert "developer" in schema["properties"]
         assert "project" in schema["properties"]
@@ -459,7 +459,7 @@ class TestHandleMessage:
                     "session_name": "Test",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 30,
+                    "initial_estimate_minutes": 30,
                     "estimate_source": "manual",
                 },
             },
@@ -562,7 +562,7 @@ class TestStartSession:
         - Session exists in storage with returned ID
         - All provided fields match stored values
         - session_name, task_type, model_name correctly stored
-        - human_time_estimate_minutes and estimate_source persisted
+        - initial_estimate_minutes and estimate_source persisted
 
         Testing Principle:
         Validates end-to-end data flow for session creation.
@@ -572,7 +572,7 @@ class TestStartSession:
                 "session_name": "Test",
                 "task_type": "code_generation",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 30,
+                "initial_estimate_minutes": 30,
                 "estimate_source": "manual",
             },
             1,
@@ -585,7 +585,7 @@ class TestStartSession:
         assert session["session_name"] == "Test"
         assert session["task_type"] == "code_generation"
         assert session["model_name"] == "claude-opus-4-20250514"
-        assert session["human_time_estimate_minutes"] == 30
+        assert session["initial_estimate_minutes"] == 30
         assert session["estimate_source"] == "manual"
 
     @pytest.mark.asyncio
@@ -618,7 +618,7 @@ class TestStartSession:
                 "session_name": "Test",
                 "task_type": "debugging",
                 "model_name": "gpt-4o",
-                "human_time_estimate_minutes": 60,
+                "initial_estimate_minutes": 60,
                 "estimate_source": "issue_tracker",
             },
             1,
@@ -656,7 +656,7 @@ class TestStartSession:
                 "session_name": "Test",
                 "task_type": "code_generation",
                 "model_name": "claude-sonnet-4-20250514",
-                "human_time_estimate_minutes": 45,
+                "initial_estimate_minutes": 45,
                 "estimate_source": "historical",
                 "context": "Working on auth",
             },
@@ -714,7 +714,7 @@ class TestStartSession:
                 "session_name": "New Session",
                 "task_type": "debugging",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 30,
+                "initial_estimate_minutes": 30,
                 "estimate_source": "manual",
             },
             1,
@@ -790,7 +790,7 @@ class TestStartSession:
                 "session_name": "New Session",
                 "task_type": "testing",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 60,
+                "initial_estimate_minutes": 60,
                 "estimate_source": "issue_tracker",
             },
             1,
@@ -861,7 +861,7 @@ class TestStartSession:
                 "session_name": "MCP Session",
                 "task_type": "debugging",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 30,
+                "initial_estimate_minutes": 30,
                 "estimate_source": "manual",
             },
             1,
@@ -933,7 +933,7 @@ class TestStartSession:
                 "session_name": "New MCP Session",
                 "task_type": "debugging",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 30,
+                "initial_estimate_minutes": 30,
                 "estimate_source": "manual",
             },
             1,
@@ -985,7 +985,7 @@ class TestStartSession:
                 "session_name": "First Session",
                 "task_type": "code_generation",
                 "model_name": "claude-opus-4-20250514",
-                "human_time_estimate_minutes": 30,
+                "initial_estimate_minutes": 30,
                 "estimate_source": "manual",
             },
             1,
@@ -2671,7 +2671,7 @@ class TestStartSessionExceptionHandling:
                     "session_name": "Test",
                     "task_type": "code_generation",
                     "model_name": "test",
-                    "human_time_estimate_minutes": 30,
+                    "initial_estimate_minutes": 30,
                     "estimate_source": "manual",
                 },
                 1,

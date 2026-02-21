@@ -203,7 +203,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         assert session.id is not None
@@ -217,7 +217,7 @@ class TestSession:
                     "name": "Test Session",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 30.0,
+                    "initial_estimate_minutes": 30.0,
                     "estimate_source": "manual",
                 },
                 "name",
@@ -229,7 +229,7 @@ class TestSession:
                     "name": "Test",
                     "task_type": "debugging",
                     "model_name": "gpt-4o",
-                    "human_time_estimate_minutes": 60.0,
+                    "initial_estimate_minutes": 60.0,
                     "estimate_source": "issue_tracker",
                 },
                 "task_type",
@@ -241,7 +241,7 @@ class TestSession:
                     "name": "Test",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 30.0,
+                    "initial_estimate_minutes": 30.0,
                     "estimate_source": "manual",
                 },
                 "model_name",
@@ -253,10 +253,10 @@ class TestSession:
                     "name": "Test",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 45.5,
+                    "initial_estimate_minutes": 45.5,
                     "estimate_source": "manual",
                 },
-                "human_time_estimate_minutes",
+                "initial_estimate_minutes",
                 45.5,
                 id="human_time_estimate",
             ),
@@ -265,7 +265,7 @@ class TestSession:
                     "name": "Test",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 30.0,
+                    "initial_estimate_minutes": 30.0,
                     "estimate_source": "issue_tracker",
                 },
                 "estimate_source",
@@ -277,7 +277,7 @@ class TestSession:
                     "name": "Test",
                     "task_type": "code_generation",
                     "model_name": "claude-opus-4-20250514",
-                    "human_time_estimate_minutes": 30.0,
+                    "initial_estimate_minutes": 30.0,
                     "estimate_source": "manual",
                     "context": "Some context",
                 },
@@ -319,7 +319,7 @@ class TestSession:
             session_kwargs["name"],
             session_kwargs["task_type"],
             model_name=session_kwargs["model_name"],
-            human_time_estimate_minutes=session_kwargs["human_time_estimate_minutes"],
+            initial_estimate_minutes=session_kwargs["initial_estimate_minutes"],
             estimate_source=session_kwargs["estimate_source"],
             context=session_kwargs.get("context", ""),
         )
@@ -369,7 +369,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         assert getattr(session, attr_name) == expected_value
@@ -400,7 +400,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         assert session.start_time is not None
@@ -433,7 +433,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         session.end("success")
@@ -465,7 +465,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         session.end("success")
@@ -497,7 +497,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         session.end("partial")
@@ -529,7 +529,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
         )
         session.end("success", "All tests passing")
@@ -561,7 +561,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
             context="ctx",
         )
@@ -573,7 +573,8 @@ class TestSession:
         assert "context" in result
         assert "start_time" in result
         assert "model_name" in result
-        assert "human_time_estimate_minutes" in result
+        assert "initial_estimate_minutes" in result
+        assert "final_estimate_minutes" in result
         assert "estimate_source" in result
         assert "status" in result
         assert "end_time" in result
@@ -611,7 +612,7 @@ class TestSession:
             "Test Session",
             "debugging",
             model_name="gpt-4o",
-            human_time_estimate_minutes=60.0,
+            initial_estimate_minutes=60.0,
             estimate_source="issue_tracker",
             context="context",
         )
@@ -622,7 +623,7 @@ class TestSession:
         assert result["task_type"] == "debugging"
         assert result["context"] == "context"
         assert result["model_name"] == "gpt-4o"
-        assert result["human_time_estimate_minutes"] == 60.0
+        assert result["initial_estimate_minutes"] == 60.0
         assert result["estimate_source"] == "issue_tracker"
 
     def test_from_dict_creates_session(self) -> None:
@@ -654,7 +655,7 @@ class TestSession:
             "context": "ctx",
             "start_time": "2024-01-01T00:00:00+00:00",
             "model_name": "claude-opus-4-20250514",
-            "human_time_estimate_minutes": 45.0,
+            "initial_estimate_minutes": 45.0,
             "estimate_source": "manual",
             "status": "active",
             "end_time": None,
@@ -670,7 +671,7 @@ class TestSession:
         assert session.name == "Test"
         assert session.task_type == "debugging"
         assert session.model_name == "claude-opus-4-20250514"
-        assert session.human_time_estimate_minutes == 45.0
+        assert session.initial_estimate_minutes == 45.0
         assert session.estimate_source == "manual"
         assert session.total_interactions == 5
         assert session.avg_effectiveness == 4.2
@@ -732,7 +733,7 @@ class TestSession:
             "Test",
             "code_generation",
             model_name="claude-opus-4-20250514",
-            human_time_estimate_minutes=30.0,
+            initial_estimate_minutes=30.0,
             estimate_source="manual",
             context="ctx",
         )
@@ -747,7 +748,7 @@ class TestSession:
         assert restored.name == original.name
         assert restored.task_type == original.task_type
         assert restored.model_name == original.model_name
-        assert restored.human_time_estimate_minutes == original.human_time_estimate_minutes
+        assert restored.initial_estimate_minutes == original.initial_estimate_minutes
         assert restored.estimate_source == original.estimate_source
         assert restored.status == original.status
         assert restored.outcome == original.outcome

@@ -1792,6 +1792,7 @@ class TestSessionEndCommand:
                 session_id="test_123",
                 outcome="success",
                 notes="",
+                final_estimate_minutes=None,
                 json_output=False,
             )
 
@@ -1823,6 +1824,7 @@ class TestSessionEndCommand:
                 session_id="test_123",
                 outcome="partial",
                 notes="Some notes here",
+                final_estimate_minutes=None,
                 json_output=True,
             )
 
