@@ -581,6 +581,15 @@ def run_install(
     if not mcp_only:
         _copy_agent_files(fs, bundled_dir, github_dir, working_dir)
 
+    # Write .ai_sessions.yaml to project root if it doesn't exist
+    if not global_install:
+        yaml_path = _build_path(working_dir, ".ai_sessions.yaml")
+        if not fs.exists(yaml_path):
+            project_name = os.path.basename(working_dir)
+            fs.write_text(yaml_path, f"project: {project_name}\n")
+            _log("Created .ai_sessions.yaml with project name", emoji="📄")
+            _log("Commit .ai_sessions.yaml to share project name with your team")
+
     # Install as service if requested
     if service:
         _log("Installing as system service...", emoji="🔧")
@@ -725,6 +734,8 @@ def run_session_start(
     mins: float,
     source: str,
     context: str = "",
+    developer: str = "",
+    project: str = "",
     *,
     json_output: bool = False,
 ) -> int:
@@ -764,6 +775,8 @@ def run_session_start(
         estimate_source=source,
         context=context,
         execution_context="background",
+        developer=developer,
+        project=project,
     )
     return _output_result(result.to_dict(), json_output)
 
@@ -1096,6 +1109,16 @@ def main() -> int:
         help="Additional context about the work",
     )
     start_parser.add_argument(
+        "--developer",
+        default="",
+        help="Developer name (defaults to git config user.name)",
+    )
+    start_parser.add_argument(
+        "--project",
+        default="",
+        help="Project name (defaults to value in .ai_sessions.yaml)",
+    )
+    start_parser.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
@@ -1246,6 +1269,8 @@ def main() -> int:
             mins=args.mins,
             source=args.source,
             context=args.context,
+            developer=args.developer,
+            project=args.project,
             json_output=args.json_output,
         )
     elif args.command == "log":

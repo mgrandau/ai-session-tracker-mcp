@@ -1090,6 +1090,57 @@ class TestRunInstall:
                 service=False,
             )
 
+    def test_run_install_writes_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install creates .ai_sessions.yaml with project name.
+
+        Business context:
+        .ai_sessions.yaml stores the project name so agents can auto-populate
+        the project field in session metadata without manual input.
+        """
+        from ai_session_tracker_mcp.cli import run_install
+
+        run_install(filesystem=mock_fs, cwd="/project/my-api", package_dir="/pkg")
+
+        yaml_content = mock_fs.get_file("/project/my-api/.ai_sessions.yaml")
+        assert yaml_content is not None
+        assert "project: my-api" in yaml_content
+
+    def test_run_install_skips_existing_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install does not overwrite existing .ai_sessions.yaml.
+
+        Business context:
+        Users may customize .ai_sessions.yaml (e.g., rename project). The
+        install command must not overwrite manual customizations.
+        """
+        from ai_session_tracker_mcp.cli import run_install
+
+        # Pre-create a customized .ai_sessions.yaml
+        mock_fs.write_text("/project/.ai_sessions.yaml", "project: custom-name\n")
+
+        run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
+
+        yaml_content = mock_fs.get_file("/project/.ai_sessions.yaml")
+        assert yaml_content == "project: custom-name\n"
+
+    def test_run_install_global_skips_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
+        """Verifies global install does not write .ai_sessions.yaml.
+
+        Business context:
+        Global installs target a shared VS Code settings directory, not any
+        specific project root, so .ai_sessions.yaml is not applicable.
+        """
+        from ai_session_tracker_mcp.cli import run_install
+
+        with patch("pathlib.Path.home", return_value=MagicMock(__str__=lambda _: "/home/user")):
+            run_install(
+                filesystem=mock_fs,
+                cwd="/project",
+                package_dir="/pkg",
+                global_install=True,
+            )
+
+        assert not mock_fs.exists("/project/.ai_sessions.yaml")
+
 
 class TestInstallServiceFlag:
     """Tests for install command --service flag."""
@@ -1506,6 +1557,8 @@ class TestSessionStartCommand:
                 mins=60.0,
                 source="manual",
                 context="",
+                developer="",
+                project="",
                 json_output=False,
             )
             assert result == 0
@@ -1547,6 +1600,8 @@ class TestSessionStartCommand:
                 mins=120.0,
                 source="issue_tracker",
                 context="Extra context here",
+                developer="",
+                project="",
                 json_output=True,
             )
 

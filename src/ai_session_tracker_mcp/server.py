@@ -240,6 +240,16 @@ class SessionTrackerServer:
                             "description": "Additional context about the work",
                             "default": "",
                         },
+                        "developer": {
+                            "type": "string",
+                            "description": "Developer name (from git config user.name)",
+                            "default": "",
+                        },
+                        "project": {
+                            "type": "string",
+                            "description": "Project name (from .ai_sessions.yaml)",
+                            "default": "",
+                        },
                     },
                     "required": [
                         "session_name",
@@ -462,6 +472,8 @@ class SessionTrackerServer:
             estimate_source=args.get("estimate_source", ""),
             context=args.get("context", ""),
             execution_context="foreground",
+            developer=args.get("developer", ""),
+            project=args.get("project", ""),
         )
 
         if not result.success:

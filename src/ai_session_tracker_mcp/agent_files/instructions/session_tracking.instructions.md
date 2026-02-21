@@ -3,7 +3,12 @@ applyTo: '**'
 ---
 # Session Tracking
 Every user request = session. Start before any action.
-Flow: start_ai_session(name,type,model,mins,source) → session_id → log_ai_interaction(session_id,rating,notes) (≥1) → end_ai_session(session_id,outcome)
+
+## Resolve Identity Before Starting
+1. **developer**: run `git config user.name` → fallback to `$USER` / `$USERNAME`
+2. **project**: read `project:` from `.ai_sessions.yaml` in workspace root → fallback to workspace folder name
+
+Flow: start_ai_session(name,type,model,mins,source,developer,project) → session_id → log_ai_interaction(session_id,rating,notes) (≥1) → end_ai_session(session_id,outcome)
 Use MCP tools if available; else use CLI equivalents.
 Optional: flag_ai_issue(session_id,type,desc,severity)
 

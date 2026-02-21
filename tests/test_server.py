@@ -295,6 +295,8 @@ class TestToolDefinitions:
         assert "model_name" in schema["required"]
         assert "human_time_estimate_minutes" in schema["required"]
         assert "estimate_source" in schema["required"]
+        assert "developer" in schema["properties"]
+        assert "project" in schema["properties"]
 
     def test_log_interaction_schema(self, server: SessionTrackerServer) -> None:
         """Verifies log_ai_interaction has required parameter schema.

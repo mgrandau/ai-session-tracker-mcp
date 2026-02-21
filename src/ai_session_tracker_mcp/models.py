@@ -141,6 +141,8 @@ class Session:
     total_interactions: int = 0
     avg_effectiveness: float = 0.0
     code_metrics: list[dict[str, Any]] = field(default_factory=list)
+    developer: str = ""
+    project: str = ""
 
     @classmethod
     def create(
@@ -152,6 +154,8 @@ class Session:
         estimate_source: str,
         context: str = "",
         execution_context: str = "foreground",
+        developer: str = "",
+        project: str = "",
     ) -> Session:
         """
         Factory method to create new session with generated ID and timestamp.
@@ -189,6 +193,8 @@ class Session:
             human_time_estimate_minutes=human_time_estimate_minutes,
             estimate_source=estimate_source,
             execution_context=execution_context,
+            developer=developer,
+            project=project,
         )
 
     def end(self, outcome: str, notes: str = "") -> None:
@@ -270,6 +276,8 @@ class Session:
             "total_interactions": self.total_interactions,
             "avg_effectiveness": self.avg_effectiveness,
             "code_metrics": self.code_metrics,
+            "developer": self.developer,
+            "project": self.project,
         }
 
     @classmethod
@@ -318,6 +326,8 @@ class Session:
             total_interactions=data.get("total_interactions", 0),
             avg_effectiveness=data.get("avg_effectiveness", 0.0),
             code_metrics=data.get("code_metrics", []),
+            developer=data.get("developer", ""),
+            project=data.get("project", ""),
         )
 
 

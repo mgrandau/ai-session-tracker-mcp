@@ -336,6 +336,8 @@ class TestSession:
             pytest.param("total_interactions", 0, id="total_interactions_zero"),
             pytest.param("avg_effectiveness", 0.0, id="avg_effectiveness_zero"),
             pytest.param("code_metrics", [], id="code_metrics_empty"),
+            pytest.param("developer", "", id="developer_empty"),
+            pytest.param("project", "", id="project_empty"),
         ],
     )
     def test_create_defaults(self, attr_name: str, expected_value: object) -> None:
@@ -580,6 +582,8 @@ class TestSession:
         assert "total_interactions" in result
         assert "avg_effectiveness" in result
         assert "code_metrics" in result
+        assert "developer" in result
+        assert "project" in result
 
     def test_to_dict_values_match(self) -> None:
         """Verifies Session.to_dict() values match session attributes.

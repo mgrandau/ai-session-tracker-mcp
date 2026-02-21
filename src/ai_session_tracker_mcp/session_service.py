@@ -222,6 +222,8 @@ class SessionService:
         estimate_source: str,
         context: str = "",
         execution_context: str = "foreground",
+        developer: str = "",
+        project: str = "",
     ) -> ServiceResult:
         """
         Start a new tracking session.
@@ -280,6 +282,8 @@ class SessionService:
                 estimate_source=estimate_source,
                 context=context,
                 execution_context=execution_context,
+                developer=developer,
+                project=project,
             )
 
             sessions = self.storage.load_sessions()
