@@ -53,8 +53,7 @@ This creates:
 
 ### Full MCP Configuration Template
 
-For manual configuration or to enable all features, use this templatelick the **options menu** (next to the up arrow/return button)
-2. E in `.vscode/mcp.json`:
+For manual configuration or to enable all features, use this template in `.vscode/mcp.json`:
 
 ```json
 {
@@ -66,8 +65,7 @@ For manual configuration or to enable all features, use this templatelick the **
         "--dashboard-host", "127.0.0.1",
         "--dashboard-port", "8050"
       ]
-    }lick the **options menu** (next to the up arrow/return button)
-2. E
+    }
   }
 }
 ```
@@ -387,7 +385,7 @@ pdm run check-all
 
 ## 📊 Data Storage
 
-Session data is stored in `.ai_sessions/` in your project root:
+Session data is stored in `.ai_sessions/` in your project root (or wherever `AI_OUTPUT_DIR` points):
 
 ```text
 .ai_sessions/
@@ -396,6 +394,8 @@ Session data is stored in `.ai_sessions/` in your project root:
 ├── issues.json        # Flagged issues
 └── charts/            # Generated chart images
 ```
+
+For backup, sync, and team aggregation patterns (cloud sync, NAS, git, S3, rsync) see the [Backup and Sync Guide](docs/backup-sync-guide.md).
 
 ---
 
