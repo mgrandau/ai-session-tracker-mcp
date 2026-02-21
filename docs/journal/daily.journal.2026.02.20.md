@@ -149,8 +149,15 @@ After this change every completed session carries:
 
 These three together enable estimation accuracy reporting and AI impact visibility over time.
 
+### ROI and productivity calculations
+
+The statistics layer currently uses `human_time_estimate_minutes` as the human baseline for ROI (cost saved, productivity multiplier). After this change:
+
+- **ROI / cost saved / productivity multiplier** → use `final_estimate_minutes` with fallback to `initial_estimate_minutes` when `final_estimate_minutes` is `None` (abandoned sessions, old data). Final is the better baseline because the developer knows the true complexity after completing the work.
+- **Estimation accuracy** (initial vs. final vs. actual over time) → deferred to a future issue. This issue is purely data capture.
+
 ### What we deliberately left out
 
-Statistics and analytics for initial vs. final vs. actual comparison — that belongs in a later issue (related to #13 centralized aggregation). This issue is purely the data capture layer.
+Estimation accuracy analytics — comparing initial vs. final vs. actual elapsed time to measure whether developers get better at estimating over time. That belongs in a later issue (related to #13 centralized aggregation). This issue is the data capture layer only.
 
 The `final_estimate_minutes` field is optional at `end_ai_session`. Sessions that were never properly closed (abandoned, crashed) will have it as `None`, which is fine — only completed sessions are meaningful for estimation accuracy anyway.
