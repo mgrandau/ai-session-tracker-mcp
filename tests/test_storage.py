@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -1159,3 +1161,47 @@ class TestEnsureFilesExistErrorHandling:
             storage = StorageManager(storage_dir="/test/storage", filesystem=mock_fs)
             # Storage is created but may have empty/default state
             assert storage is not None
+
+
+class TestStorageManagerOutputDir:
+    """Tests for AI_OUTPUT_DIR environment variable redirect."""
+
+    def teardown_method(self) -> None:
+        from ai_session_tracker_mcp.config import Config
+
+        Config.reset_test_overrides()
+
+    def test_uses_output_dir_env_var(self, mock_fs: MockFileSystem) -> None:
+        """Verifies StorageManager uses AI_OUTPUT_DIR when set."""
+        from ai_session_tracker_mcp.config import Config
+
+        with Config.override_for_test(output_dir="/custom/output"):
+            storage = StorageManager(filesystem=mock_fs)
+            assert storage.storage_dir == "/custom/output"
+
+    def test_falls_back_to_default_when_env_unset(self, mock_fs: MockFileSystem) -> None:
+        """Verifies StorageManager uses default dir when AI_OUTPUT_DIR is not set."""
+        from ai_session_tracker_mcp.config import Config
+
+        with patch.dict(os.environ, {}, clear=True):
+            Config.reset_test_overrides()
+            storage = StorageManager(filesystem=mock_fs)
+            assert storage.storage_dir == Config.STORAGE_DIR
+
+    def test_explicit_storage_dir_overrides_env_var(self, mock_fs: MockFileSystem) -> None:
+        """Verifies explicit storage_dir argument takes precedence over AI_OUTPUT_DIR."""
+        from ai_session_tracker_mcp.config import Config
+
+        with Config.override_for_test(output_dir="/env/path"):
+            storage = StorageManager(storage_dir="/explicit/path", filesystem=mock_fs)
+            assert storage.storage_dir == "/explicit/path"
+
+    def test_output_dir_creates_correct_file_paths(self, mock_fs: MockFileSystem) -> None:
+        """Verifies files are created inside the output dir."""
+        from ai_session_tracker_mcp.config import Config
+
+        with Config.override_for_test(output_dir="/team/share/jsmith"):
+            storage = StorageManager(filesystem=mock_fs)
+            assert storage.sessions_file.startswith("/team/share/jsmith/")
+            assert storage.interactions_file.startswith("/team/share/jsmith/")
+            assert storage.issues_file.startswith("/team/share/jsmith/")

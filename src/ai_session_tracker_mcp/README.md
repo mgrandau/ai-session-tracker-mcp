@@ -243,6 +243,27 @@ ai-session-tracker report
 |--------------|---------|---------|
 | `AI_ENABLE_S3_BACKUP` | Enable S3 backup | `false` |
 | `AI_PROJECT_ID` | Project identifier | directory name |
+| `AI_OUTPUT_DIR` | Redirect session data to a custom directory | `.ai_sessions` |
+| `AI_MAX_SESSION_DURATION_HOURS` | Cap session duration for auto-close | `4.0` |
+
+**`AI_OUTPUT_DIR` — Centralized Aggregation**
+
+Set `AI_OUTPUT_DIR` to redirect all session data away from the local `.ai_sessions`
+directory. Useful for team or cross-project aggregation:
+
+```bash
+# Shared network drive
+export AI_OUTPUT_DIR=/mnt/team-share/jsmith/ai-sessions
+
+# Cloud-synced folder (OneDrive, Dropbox, etc.)
+export AI_OUTPUT_DIR=/home/jsmith/OneDrive/ai-metrics/my-project
+
+# Local git repo (commit and push on your own schedule)
+export AI_OUTPUT_DIR=/home/jsmith/team-metrics/jsmith/my-project
+```
+
+The MCP server writes `sessions.json`, `interactions.json`, and `issues.json` to
+whatever path is configured. How data gets to a central location is up to you.
 
 **Cost Config (in `config.py`):**
 - `HUMAN_HOURLY_RATE`: $130/hr

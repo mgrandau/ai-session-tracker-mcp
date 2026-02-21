@@ -12,7 +12,6 @@ tools: ['vscode/getProjectSetupInfo', 'vscode/installExtension', 'vscode/newWork
 
 ## Instruction Priority
 1. **`session_tracking.instructions.md`** - Background metrics (silent)
-2. **`confirmation_workflow.instructions.md`** - Preview → Confirm → Execute
 
 ## Workflow: start → log → end
 1. `start_ai_session()` → get session_id

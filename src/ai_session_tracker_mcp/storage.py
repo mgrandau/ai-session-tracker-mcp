@@ -100,7 +100,7 @@ class StorageManager:
             >>> # Custom storage path
             >>> storage = StorageManager(storage_dir='/data/sessions')
         """
-        self.storage_dir = storage_dir or Config.STORAGE_DIR
+        self.storage_dir = storage_dir or Config.get_output_dir() or Config.STORAGE_DIR
         self._fs: FileSystem = filesystem or RealFileSystem()
         storage_path = Path(self.storage_dir)
         self.sessions_file = str(storage_path / Config.SESSIONS_FILE)

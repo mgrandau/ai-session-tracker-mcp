@@ -780,3 +780,50 @@ class TestMaxSessionDuration:
     def test_env_var_name_constant(self) -> None:
         """Verifies environment variable name constant is correct."""
         assert Config.ENV_MAX_SESSION_DURATION == "AI_MAX_SESSION_DURATION_HOURS"
+
+
+class TestOutputDirConfig:
+    """Tests for AI_OUTPUT_DIR configuration."""
+
+    def setup_method(self) -> None:
+        Config.reset_test_overrides()
+
+    def teardown_method(self) -> None:
+        Config.reset_test_overrides()
+
+    def test_output_dir_returns_none_by_default(self) -> None:
+        """Verifies output dir is None when env var not set."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert Config.get_output_dir() is None
+
+    def test_output_dir_from_env_var(self) -> None:
+        """Verifies output dir reads AI_OUTPUT_DIR env var."""
+        with patch.dict(os.environ, {"AI_OUTPUT_DIR": "/mnt/share/jsmith"}):
+            assert Config.get_output_dir() == "/mnt/share/jsmith"
+
+    def test_output_dir_empty_env_var_returns_none(self) -> None:
+        """Verifies empty AI_OUTPUT_DIR env var returns None."""
+        with patch.dict(os.environ, {"AI_OUTPUT_DIR": ""}):
+            assert Config.get_output_dir() is None
+
+    def test_output_dir_test_override(self) -> None:
+        """Verifies test override takes precedence over env var."""
+        Config.set_test_overrides(output_dir="/override/path")
+        with patch.dict(os.environ, {"AI_OUTPUT_DIR": "/env/path"}):
+            assert Config.get_output_dir() == "/override/path"
+
+    def test_output_dir_env_var_constant(self) -> None:
+        """Verifies env var name constant is correct."""
+        assert Config.ENV_OUTPUT_DIR == "AI_OUTPUT_DIR"
+
+    def test_reset_clears_output_dir_override(self) -> None:
+        """Verifies reset_test_overrides clears output_dir override."""
+        Config.set_test_overrides(output_dir="/some/path")
+        Config.reset_test_overrides()
+        assert Config._output_dir_override is None
+
+    def test_context_manager_sets_output_dir(self) -> None:
+        """Verifies context manager sets and resets output_dir."""
+        with Config.override_for_test(output_dir="/ctx/path"):
+            assert Config.get_output_dir() == "/ctx/path"
+        assert Config._output_dir_override is None

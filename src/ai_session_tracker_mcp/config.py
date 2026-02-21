@@ -160,6 +160,20 @@ class Config:
     ENV_MAX_SESSION_DURATION: ClassVar[str] = "AI_MAX_SESSION_DURATION_HOURS"
     """Environment variable to override max session duration (hours)."""
 
+    ENV_OUTPUT_DIR: ClassVar[str] = "AI_OUTPUT_DIR"
+    """
+    Environment variable to redirect session data to a custom directory.
+
+    When set, StorageManager writes all data to this path instead of
+    the default '.ai_sessions' directory. Enables centralized aggregation
+    across developers and projects by pointing to a shared location such
+    as a synced folder (OneDrive, Dropbox), network share, or git repo.
+
+    Examples:
+        AI_OUTPUT_DIR=/mnt/team-share/jsmith/ai-session-tracker-mcp
+        AI_OUTPUT_DIR=/home/jsmith/OneDrive/ai-metrics/my-project
+    """
+
     # =========================================================================
     # COMPUTED PROPERTIES
     # =========================================================================
@@ -229,6 +243,7 @@ class Config:
     _s3_backup_override: ClassVar[bool | None] = None
     _project_id_override: ClassVar[str | None] = None
     _max_session_duration_override: ClassVar[float | None] = None
+    _output_dir_override: ClassVar[str | None] = None
 
     @classmethod
     def is_s3_backup_enabled(cls) -> bool:
@@ -327,11 +342,35 @@ class Config:
         return cls.MAX_SESSION_DURATION_HOURS
 
     @classmethod
+    def get_output_dir(cls) -> str | None:
+        """
+        Get the configured output directory for session data.
+
+        Uses a priority system: test overrides first, then environment
+        variable AI_OUTPUT_DIR, then returns None (use default STORAGE_DIR).
+
+        When a non-None value is returned, StorageManager uses it as the
+        storage directory instead of '.ai_sessions'.
+
+        Returns:
+            Configured output directory path string, or None if not set.
+
+        Example:
+            >>> # With env var: AI_OUTPUT_DIR=/mnt/share/jsmith
+            >>> Config.get_output_dir()
+            '/mnt/share/jsmith'
+        """
+        if cls._output_dir_override is not None:
+            return cls._output_dir_override
+        return os.environ.get(cls.ENV_OUTPUT_DIR) or None
+
+    @classmethod
     def set_test_overrides(
         cls,
         s3_enabled: bool | None = None,
         project_id: str | None = None,
         max_session_duration: float | None = None,
+        output_dir: str | None = None,
     ) -> None:
         """
         Set test overrides for environment-based settings.
@@ -361,6 +400,7 @@ class Config:
         cls._s3_backup_override = s3_enabled
         cls._project_id_override = project_id
         cls._max_session_duration_override = max_session_duration
+        cls._output_dir_override = output_dir
 
     @classmethod
     def reset_test_overrides(cls) -> None:
@@ -392,6 +432,7 @@ class Config:
         cls._s3_backup_override = None
         cls._project_id_override = None
         cls._max_session_duration_override = None
+        cls._output_dir_override = None
 
     @classmethod
     @contextmanager
@@ -400,6 +441,7 @@ class Config:
         s3_enabled: bool | None = None,
         project_id: str | None = None,
         max_session_duration: float | None = None,
+        output_dir: str | None = None,
     ) -> Generator[None]:
         """
         Context manager for test overrides with automatic cleanup.
@@ -426,7 +468,7 @@ class Config:
             >>> # Automatically reset after context exit
         """
         try:
-            cls.set_test_overrides(s3_enabled, project_id, max_session_duration)
+            cls.set_test_overrides(s3_enabled, project_id, max_session_duration, output_dir)
             yield
         finally:
             cls.reset_test_overrides()

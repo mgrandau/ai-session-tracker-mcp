@@ -335,6 +335,7 @@ def _generate_mcp_server_config(
         config["_env_example"] = {
             "AI_MAX_SESSION_DURATION_HOURS": "4.0",
             "AI_ENABLE_S3_BACKUP": "false",
+            "AI_OUTPUT_DIR": "",
         }
         config["_env_example_note"] = "Copy _env_example to 'env' to customize"
 
