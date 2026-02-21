@@ -113,3 +113,44 @@ This avoids any risk of accidentally committing another person's developer name.
 ### What we deliberately left out
 
 No server-side auto-detection. No new environment variables. No per-machine config file for developer identity. The git config is the source of truth for who the developer is — it's already set, already authoritative, already cross-platform.
+
+---
+
+## Issue 16: Split time estimate into initial and final estimate fields
+
+### The problem
+
+The current `human_time_estimate_minutes` field is captured once at session start and never updated. This loses a useful signal: how the developer's estimate evolves from "before starting" to "after finishing." Comparing initial vs. final vs. actual elapsed time is the foundation for estimation accuracy tracking.
+
+There is also a friction problem in the current End Session Protocol. The existing agent instructions say: manually edit `.ai_sessions/sessions.json` to update `human_time_estimate_minutes` if the git-diff calculation exceeds the original estimate. That is awkward — agents should not be editing raw JSON files as a normal workflow step.
+
+### What we resolved
+
+**Two fields replace one:**
+- `initial_estimate_minutes` — the developer's gut estimate before starting, captured at `start_ai_session`
+- `final_estimate_minutes` — the revised estimate after completing the work, captured at `end_ai_session` as an optional parameter
+
+The rename from `human_time_estimate_minutes` to `initial_estimate_minutes` is deliberate — the old name implied a single canonical estimate, which no longer fits the model. Backward compatibility is preserved in `from_dict()` by reading the old key as a fallback.
+
+**`end_ai_session` becomes the update point:**
+The `end_ai_session` handler already updates the session record in place (writes `end_time`, `outcome`, `notes`, flips `status`). `final_estimate_minutes` is just one more field written at that same moment. No separate operation, no JSON surgery.
+
+**The "manual JSON edit" step is removed entirely:**
+The current End Session Protocol step 4 ("if calculated > original estimate, manually edit `sessions.json`") is replaced by simply passing `final_estimate_minutes` to `end_ai_session`. This is strictly less friction.
+
+**What `final_estimate_minutes` means in practice:**
+For agents, it is populated from the git-diff calculation (insertions + deletions) × 10 ÷ 50, rounded up to the nearest bucket. This is a mechanical proxy for effort, not a subjective retrospective judgment. The instructions will specify this clearly so agents do not have to reason about which value to use.
+
+**Three data points per session:**
+After this change every completed session carries:
+1. `initial_estimate_minutes` — what the developer thought it would take
+2. `final_estimate_minutes` — what the git diff implies it took (effort proxy)
+3. Actual elapsed time — `end_time - start_time` (already tracked)
+
+These three together enable estimation accuracy reporting and AI impact visibility over time.
+
+### What we deliberately left out
+
+Statistics and analytics for initial vs. final vs. actual comparison — that belongs in a later issue (related to #13 centralized aggregation). This issue is purely the data capture layer.
+
+The `final_estimate_minutes` field is optional at `end_ai_session`. Sessions that were never properly closed (abandoned, crashed) will have it as `None`, which is fine — only completed sessions are meaningful for estimation accuracy anyway.
