@@ -161,3 +161,51 @@ The statistics layer currently uses `human_time_estimate_minutes` as the human b
 Estimation accuracy analytics — comparing initial vs. final vs. actual elapsed time to measure whether developers get better at estimating over time. That belongs in a later issue (related to #13 centralized aggregation). This issue is the data capture layer only.
 
 The `final_estimate_minutes` field is optional at `end_ai_session`. Sessions that were never properly closed (abandoned, crashed) will have it as `None`, which is fine — only completed sessions are meaningful for estimation accuracy anyway.
+
+---
+
+## Issue 17: Session data integrity — design analysis
+
+### The original proposal: hash chain
+
+The initial idea was to add a `chain_hash` field to each completed session — a SHA256 hash chained across all sessions ordered by `start_time`. Each session's hash would commit its own ROI-bearing fields plus the previous session's hash.
+
+This had appeal: you could pinpoint which record was altered and when the chain was broken.
+
+### Alternatives we evaluated
+
+We compared five approaches on tamper strength vs. implementation cost:
+
+**Sidecar hash file** — `sessions.json.sha256` written alongside the data file on every save. Single hash of the whole file. Trivial to implement. Catches corruption and casual edits. Defeated by one shell command: recompute and overwrite the sidecar.
+
+**Hash chain in records** — the original proposal. Stronger than sidecar (pinpoints which record), same fundamental weakness (recomputable by anyone with write access). Moderate complexity: schema migration, ordering logic, migration tool.
+
+**HMAC with a key stored separately** — `HMAC-SHA256(file, key)` where the key lives in `~/.config/` rather than in the data directory. Genuinely harder to forge — requires access to two separate filesystem locations. Fails on multi-machine setups (OneDrive users with two machines need to synchronize the key out-of-band). Key loss is permanent — no key, no verification.
+
+**Git bare repo** — use git's content-addressed object store for full history and tamper detection. Strong, includes rollback. Ruled out because `sessions.json` may live on OneDrive, network shares, or SMB mounts, where git's index.lock and atomic rename requirements are not met.
+
+**Append-only audit log** — a separate `audit.log` that only appends one line per session end. Structurally harder to edit than a rewritten JSON file. Complements any of the other approaches. No schema changes required.
+
+### Why the hash chain lost
+
+Both the sidecar and the hash chain are defeated identically — a motivated attacker who can write the file can recompute the hash(es). The hash chain costs significantly more to implement: it touches five source files, requires a migration command for all legacy sessions, and adds schema complexity. The extra information it provides (which record was tampered with) is rarely needed in a personal productivity tool.
+
+### Why git was ruled out
+
+The data directory is not guaranteed to be a local filesystem. Users may point `AI_OUTPUT_DIR` at OneDrive, SharePoint, Dropbox, or a NAS mount. Git requires atomic renames and lock files that OneDrive's sync engine conflicts with. This was a hard rule-out.
+
+### Decision: sidecar hash file
+
+The sidecar is the right tradeoff for this use case:
+- ~20 lines of code, no schema changes, no migration
+- Works identically on local disk, OneDrive, NAS, or any other storage target
+- Covers the realistic threat: accidental corruption, sync glitch, naive manual edit
+- Honest about its limits: documented as tamper-evident (detects), not tamper-proof (prevents)
+
+All three JSON files (`sessions.json`, `interactions.json`, `issues.json`) get sidecars because they all contain ROI data.
+
+### What we deliberately left out
+
+HMAC is the right answer if the security requirement ever strengthens. The key concern is multi-machine OneDrive users who'd need to manually sync a key file. Until there's a clean UX solution for that (e.g., a `ai-session-tracker export-key` / `import-key` command pair), HMAC adds more friction than the scenario warrants.
+
+The append-only audit log is an interesting complement but adds a fourth file type to manage. Left for a future issue.
