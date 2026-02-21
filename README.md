@@ -98,7 +98,8 @@ For backup and sync patterns (cloud sync, S3, rsync, git), see the [Backup and S
       "command": "ai-session-tracker",
       "args": ["server"],
       "env": {
-        "AI_MAX_SESSION_DURATION_HOURS": "8.0"
+        "AI_MAX_SESSION_DURATION_HOURS": "8.0",
+        "AI_OUTPUT_DIR": "/home/jsmith/OneDrive/ai-metrics/my-project"
       }
     }
   }
