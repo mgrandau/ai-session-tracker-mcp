@@ -12,7 +12,7 @@ tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'gitkraken/*', 'co
 
 ## Instruction Priority
 1. **`session_tracking.instructions.md`** - Background metrics (silent)
-2. **`confirmation_workflow.instructions.md`** - Preview → Confirm → Execute
+<!-- 2. **`confirmation_workflow.instructions.md`** - Preview → Confirm → Execute (create this file to enable) -->
 
 ## Workflow: start → log → end
 1. `start_ai_session()` → get session_id
