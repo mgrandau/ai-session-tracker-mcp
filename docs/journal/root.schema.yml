@@ -1,0 +1,23 @@
+version: 1
+imports: []
+schemas:
+  - id: root
+    title: root
+    parent: root
+    children:
+      - daily
+  - id: daily
+    title: daily
+    children:
+      - daily.journal
+  - id: daily.journal
+    title: journal
+    children:
+      - pattern: "[0-9][0-9][0-9][0-9]"
+        title: year
+        children:
+          - pattern: "[0-9][0-9]"
+            title: month
+            children:
+              - pattern: "[0-9][0-9]"
+                title: day

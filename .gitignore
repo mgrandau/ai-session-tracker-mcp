@@ -209,3 +209,6 @@ __marimo__/
 utilities/*.json
 pdm.lock
 
+# Dendron
+.dendron.*
+seeds
