@@ -241,8 +241,6 @@ ai-session-tracker report
 
 | ENV Variable | Purpose | Default |
 |--------------|---------|---------|
-| `AI_ENABLE_S3_BACKUP` | Enable S3 backup | `false` |
-| `AI_PROJECT_ID` | Project identifier | directory name |
 | `AI_OUTPUT_DIR` | Redirect session data to a custom directory | `.ai_sessions` |
 | `AI_MAX_SESSION_DURATION_HOURS` | Cap session duration for auto-close | `4.0` |
 
@@ -263,7 +261,9 @@ export AI_OUTPUT_DIR=/home/jsmith/team-metrics/jsmith/my-project
 ```
 
 The MCP server writes `sessions.json`, `interactions.json`, and `issues.json` to
-whatever path is configured. How data gets to a central location is up to you.
+whatever path is configured. How data gets to a central location is up to you —
+see the [Backup and Sync Guide](../../docs/backup-sync-guide.md) for patterns
+covering cloud sync, network shares, git, S3, and rsync on both Linux and Windows.
 
 **Cost Config (in `config.py`):**
 - `HUMAN_HOURLY_RATE`: $130/hr

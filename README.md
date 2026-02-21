@@ -87,8 +87,9 @@ Configure via `env` in your `mcp.json` or system environment:
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
 | `AI_MAX_SESSION_DURATION_HOURS` | Max session duration in hours | `4.0` |
-| `AI_ENABLE_S3_BACKUP` | Enable S3 backup of session data | `false` |
-| `AI_PROJECT_ID` | Project identifier for S3 paths | *(directory name)* |
+| `AI_OUTPUT_DIR` | Redirect session data to a custom directory | `.ai_sessions` |
+
+For backup and sync patterns (cloud sync, S3, rsync, git), see the [Backup and Sync Guide](docs/backup-sync-guide.md).
 
 **Example with environment variables:**
 

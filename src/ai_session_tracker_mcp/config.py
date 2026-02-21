@@ -11,8 +11,8 @@ CONFIGURATION CATEGORIES:
 - Session Types: Valid task categories and exclusion rules
 
 ENVIRONMENT VARIABLES:
-- AI_ENABLE_S3_BACKUP: "true" to enable S3 backup (default: disabled)
-- AI_PROJECT_ID: Project identifier for S3 paths (default: current directory name)
+- AI_MAX_SESSION_DURATION_HOURS: Cap session duration in hours (default: 4.0)
+- AI_OUTPUT_DIR: Redirect session data to a custom directory
 
 USAGE:
     from ai_session_tracker_mcp.config import Config
@@ -151,12 +151,6 @@ class Config:
     # =========================================================================
     # ENVIRONMENT VARIABLE NAMES
     # =========================================================================
-    ENV_S3_BACKUP: ClassVar[str] = "AI_ENABLE_S3_BACKUP"
-    """Environment variable to enable S3 backup functionality."""
-
-    ENV_PROJECT_ID: ClassVar[str] = "AI_PROJECT_ID"
-    """Environment variable to set project identifier for S3 paths."""
-
     ENV_MAX_SESSION_DURATION: ClassVar[str] = "AI_MAX_SESSION_DURATION_HOURS"
     """Environment variable to override max session duration (hours)."""
 
@@ -240,72 +234,8 @@ class Config:
     # NOTE: These ClassVar attributes are intentionally mutable for test injection.
     # ClassVar fields are class-level, not instance-level, so frozen=True doesn't
     # apply to them. This enables deterministic testing without environment variables.
-    _s3_backup_override: ClassVar[bool | None] = None
-    _project_id_override: ClassVar[str | None] = None
     _max_session_duration_override: ClassVar[float | None] = None
     _output_dir_override: ClassVar[str | None] = None
-
-    @classmethod
-    def is_s3_backup_enabled(cls) -> bool:
-        """
-        Check if S3 backup functionality is enabled.
-
-        Checks for S3 backup enablement using a priority system: test
-        overrides take precedence, then environment variable, then defaults
-        to False (disabled).
-
-        Business context: S3 backup provides off-site storage for session
-        data. Disabled by default to avoid unexpected cloud costs; enable
-        via environment variable for production deployments.
-
-        Args:
-            None: Class method, accesses class variable and env var.
-
-        Returns:
-            True if S3 backup is enabled, False otherwise.
-
-        Raises:
-            None: Environment lookup never raises.
-
-        Example:
-            >>> # With env var: AI_ENABLE_S3_BACKUP=true
-            >>> Config.is_s3_backup_enabled()
-            True
-        """
-        if cls._s3_backup_override is not None:
-            return cls._s3_backup_override
-        return os.environ.get(cls.ENV_S3_BACKUP, "").lower() == "true"
-
-    @classmethod
-    def get_project_id(cls) -> str:
-        """
-        Get the project identifier for organizing S3 backup paths.
-
-        Uses a priority system: test overrides first, then environment
-        variable, then falls back to the current directory name. Used to
-        partition S3 storage by project.
-
-        Business context: Project IDs keep session data organized when
-        backing up multiple projects to the same S3 bucket. Defaults to
-        directory name for zero-configuration setup.
-
-        Args:
-            None: Class method, accesses class variable and env var.
-
-        Returns:
-            Project identifier string, typically the project directory name.
-
-        Raises:
-            None: Environment and path operations never raise.
-
-        Example:
-            >>> # In /home/user/my-project:
-            >>> Config.get_project_id()
-            'my-project'
-        """
-        if cls._project_id_override is not None:
-            return cls._project_id_override
-        return os.environ.get(cls.ENV_PROJECT_ID, os.path.basename(os.getcwd()))
 
     @classmethod
     def get_max_session_duration_hours(cls) -> float:
@@ -367,16 +297,14 @@ class Config:
     @classmethod
     def set_test_overrides(
         cls,
-        s3_enabled: bool | None = None,
-        project_id: str | None = None,
         max_session_duration: float | None = None,
         output_dir: str | None = None,
     ) -> None:
         """
         Set test overrides for environment-based settings.
 
-        Allows tests to control S3, project ID, and max session duration
-        settings without modifying environment variables. Must call
+        Allows tests to control max session duration and output directory
+        without modifying environment variables. Must call
         reset_test_overrides() in test teardown to avoid affecting other tests.
 
         Business context: Test isolation requires deterministic configuration.
@@ -384,21 +312,18 @@ class Config:
         requiring environment variable manipulation.
 
         Args:
-            s3_enabled: Override for S3 backup enabled flag. None to clear.
-            project_id: Override for project identifier. None to clear.
             max_session_duration: Override for max session duration (hours). None to clear.
+            output_dir: Override for output directory path. None to clear.
 
         Returns:
             None. Modifies class-level state.
 
         Example:
-            >>> Config.set_test_overrides(s3_enabled=True, project_id='test-project')
-            >>> Config.is_s3_backup_enabled()
-            True
+            >>> Config.set_test_overrides(max_session_duration=2.0)
+            >>> Config.get_max_session_duration_hours()
+            2.0
             >>> Config.reset_test_overrides()  # Clean up
         """
-        cls._s3_backup_override = s3_enabled
-        cls._project_id_override = project_id
         cls._max_session_duration_override = max_session_duration
         cls._output_dir_override = output_dir
 
@@ -425,12 +350,10 @@ class Config:
             None: Assignment never raises.
 
         Example:
-            >>> Config.set_test_overrides(s3_enabled=True)
+            >>> Config.set_test_overrides(max_session_duration=2.0)
             >>> # ... run tests ...
             >>> Config.reset_test_overrides()  # Always in teardown
         """
-        cls._s3_backup_override = None
-        cls._project_id_override = None
         cls._max_session_duration_override = None
         cls._output_dir_override = None
 
@@ -438,8 +361,6 @@ class Config:
     @contextmanager
     def override_for_test(
         cls,
-        s3_enabled: bool | None = None,
-        project_id: str | None = None,
         max_session_duration: float | None = None,
         output_dir: str | None = None,
     ) -> Generator[None]:
@@ -451,9 +372,8 @@ class Config:
         even if an exception occurs.
 
         Args:
-            s3_enabled: Override for S3 backup enabled flag. None to not override.
-            project_id: Override for project identifier. None to not override.
             max_session_duration: Override for max session duration (hours). None to not override.
+            output_dir: Override for output directory path. None to not override.
 
         Yields:
             None. Configuration is modified for the duration of the context.
@@ -463,12 +383,12 @@ class Config:
             within the context block are propagated after cleanup.
 
         Example:
-            >>> with Config.override_for_test(s3_enabled=True, project_id='test'):
-            ...     assert Config.is_s3_backup_enabled() is True
+            >>> with Config.override_for_test(max_session_duration=2.0):
+            ...     assert Config.get_max_session_duration_hours() == 2.0
             >>> # Automatically reset after context exit
         """
         try:
-            cls.set_test_overrides(s3_enabled, project_id, max_session_duration, output_dir)
+            cls.set_test_overrides(max_session_duration, output_dir)
             yield
         finally:
             cls.reset_test_overrides()

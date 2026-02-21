@@ -290,225 +290,6 @@ class TestConfigEnvironmentSettings:
         """
         Config.reset_test_overrides()
 
-    def test_s3_backup_disabled_by_default(self) -> None:
-        """Verifies S3 backup is disabled by default.
-
-        Tests that S3 backup requires explicit opt-in.
-
-        Business context:
-        S3 backup is optional feature requiring AWS credentials.
-        Disabled by default for simpler setup.
-
-        Arrangement:
-        Clear environment variables.
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is False.
-
-        Testing Principle:
-        Validates secure default.
-        """
-        with patch.dict(os.environ, {}, clear=True):
-            assert Config.is_s3_backup_enabled() is False
-
-    def test_s3_backup_enabled_via_env_var(self) -> None:
-        """Verifies S3 backup can be enabled via environment variable.
-
-        Tests that AI_ENABLE_S3_BACKUP=true enables the feature.
-
-        Business context:
-        Environment variables are standard for deployment configuration.
-        Allows enabling backup without code changes.
-
-        Arrangement:
-        Set AI_ENABLE_S3_BACKUP environment variable to 'true'.
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is True.
-
-        Testing Principle:
-        Validates environment variable configuration.
-        """
-        with patch.dict(os.environ, {"AI_ENABLE_S3_BACKUP": "true"}):
-            assert Config.is_s3_backup_enabled() is True
-
-    def test_s3_backup_env_var_case_insensitive(self) -> None:
-        """Verifies S3 backup env var is case insensitive.
-
-        Tests that 'TRUE' works the same as 'true'.
-
-        Business context:
-        Case-insensitive parsing is more user-friendly. Prevents
-        confusion from case differences.
-
-        Arrangement:
-        Set AI_ENABLE_S3_BACKUP to uppercase 'TRUE'.
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is True.
-
-        Testing Principle:
-        Validates case-insensitive parsing.
-        """
-        with patch.dict(os.environ, {"AI_ENABLE_S3_BACKUP": "TRUE"}):
-            assert Config.is_s3_backup_enabled() is True
-
-    def test_s3_backup_false_for_other_values(self) -> None:
-        """Verifies S3 backup false for non-true values.
-
-        Tests that only 'true' enables the feature, not 'yes' etc.
-
-        Business context:
-        Strict parsing prevents accidental enablement. Only explicit
-        'true' value activates the feature.
-
-        Arrangement:
-        Set AI_ENABLE_S3_BACKUP to 'yes' (not 'true').
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is False.
-
-        Testing Principle:
-        Validates strict boolean parsing.
-        """
-        with patch.dict(os.environ, {"AI_ENABLE_S3_BACKUP": "yes"}):
-            assert Config.is_s3_backup_enabled() is False
-
-    def test_s3_backup_test_override_true(self) -> None:
-        """Verifies test override can enable S3 backup.
-
-        Tests that test code can force S3 backup enabled.
-
-        Business context:
-        Test overrides allow testing S3 code paths without actual
-        environment variables.
-
-        Arrangement:
-        Set test override for s3_enabled=True.
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is True.
-
-        Testing Principle:
-        Validates test override mechanism.
-        """
-        Config.set_test_overrides(s3_enabled=True)
-        assert Config.is_s3_backup_enabled() is True
-
-    def test_s3_backup_test_override_false(self) -> None:
-        """Verifies test override can disable S3 backup.
-
-        Tests that test code can force S3 backup disabled even when
-        environment variable is set.
-
-        Business context:
-        Test overrides take precedence over environment. Enables
-        testing both code paths regardless of environment.
-
-        Arrangement:
-        Set env var to 'true' but override to False.
-
-        Action:
-        Call Config.is_s3_backup_enabled() method.
-
-        Assertion Strategy:
-        Validates return value is False (override wins).
-
-        Testing Principle:
-        Validates test override precedence.
-        """
-        with patch.dict(os.environ, {"AI_ENABLE_S3_BACKUP": "true"}):
-            Config.set_test_overrides(s3_enabled=False)
-            assert Config.is_s3_backup_enabled() is False
-
-    def test_project_id_uses_cwd_by_default(self) -> None:
-        """Verifies project ID defaults to current directory name.
-
-        Tests that project ID auto-derives from working directory.
-
-        Business context:
-        Project ID identifies sessions for multi-project environments.
-        Deriving from directory is intuitive default.
-
-        Arrangement:
-        Clear environment variables.
-
-        Action:
-        Call Config.get_project_id() method.
-
-        Assertion Strategy:
-        Validates result matches current directory basename.
-
-        Testing Principle:
-        Validates sensible default.
-        """
-        with patch.dict(os.environ, {}, clear=True):
-            expected = os.path.basename(os.getcwd())
-            assert Config.get_project_id() == expected
-
-    def test_project_id_from_env_var(self) -> None:
-        """Verifies project ID can be set via environment variable.
-
-        Tests that AI_PROJECT_ID environment variable overrides default.
-
-        Business context:
-        Explicit project ID enables custom naming. Useful when
-        directory name doesn't match project identity.
-
-        Arrangement:
-        Set AI_PROJECT_ID environment variable.
-
-        Action:
-        Call Config.get_project_id() method.
-
-        Assertion Strategy:
-        Validates result matches environment variable value.
-
-        Testing Principle:
-        Validates environment variable override.
-        """
-        with patch.dict(os.environ, {"AI_PROJECT_ID": "my-project"}):
-            assert Config.get_project_id() == "my-project"
-
-    def test_project_id_test_override(self) -> None:
-        """Verifies test override can set project ID.
-
-        Tests that test code can force specific project ID.
-
-        Business context:
-        Test overrides allow deterministic testing without depending
-        on working directory or environment.
-
-        Arrangement:
-        Set test override for project_id.
-
-        Action:
-        Call Config.get_project_id() method.
-
-        Assertion Strategy:
-        Validates result matches override value.
-
-        Testing Principle:
-        Validates test override mechanism.
-        """
-        Config.set_test_overrides(project_id="test-project")
-        assert Config.get_project_id() == "test-project"
-
     def test_reset_test_overrides_clears_all(self) -> None:
         """Verifies reset clears all test overrides.
 
@@ -519,21 +300,21 @@ class TestConfigEnvironmentSettings:
         pollution between test methods.
 
         Arrangement:
-        Set both s3 and project_id overrides.
+        Set max_session_duration override.
 
         Action:
         Call Config.reset_test_overrides() method.
 
         Assertion Strategy:
-        Validates both override fields are None.
+        Validates override fields are None.
 
         Testing Principle:
         Validates complete override reset.
         """
-        Config.set_test_overrides(s3_enabled=True, project_id="test")
+        Config.set_test_overrides(max_session_duration=2.0)
         Config.reset_test_overrides()
-        assert Config._s3_backup_override is None
-        assert Config._project_id_override is None
+        assert Config._max_session_duration_override is None
+        assert Config._output_dir_override is None
 
     def test_override_for_test_context_manager(self) -> None:
         """Verifies context manager sets and resets overrides.
@@ -558,16 +339,15 @@ class TestConfigEnvironmentSettings:
         """
         # Before context: defaults apply
         with patch.dict(os.environ, {}, clear=True):
-            assert Config.is_s3_backup_enabled() is False
+            assert Config.get_max_session_duration_hours() == Config.MAX_SESSION_DURATION_HOURS
 
         # Inside context: overrides active
-        with Config.override_for_test(s3_enabled=True, project_id="ctx-test"):
-            assert Config.is_s3_backup_enabled() is True
-            assert Config.get_project_id() == "ctx-test"
+        with Config.override_for_test(max_session_duration=1.0):
+            assert Config.get_max_session_duration_hours() == 1.0
 
         # After context: automatically reset
-        assert Config._s3_backup_override is None
-        assert Config._project_id_override is None
+        assert Config._max_session_duration_override is None
+        assert Config._output_dir_override is None
 
     def test_override_for_test_resets_on_exception(self) -> None:
         """Verifies context manager resets even on exception.
@@ -592,14 +372,14 @@ class TestConfigEnvironmentSettings:
         """
         with (
             pytest.raises(ValueError),
-            Config.override_for_test(s3_enabled=True, project_id="exc-test"),
+            Config.override_for_test(max_session_duration=1.0),
         ):
-            assert Config.is_s3_backup_enabled() is True
+            assert Config.get_max_session_duration_hours() == 1.0
             raise ValueError("Simulated test failure")
 
         # Cleanup should still have occurred
-        assert Config._s3_backup_override is None
-        assert Config._project_id_override is None
+        assert Config._max_session_duration_override is None
+        assert Config._output_dir_override is None
 
 
 class TestConfigFilterProductiveSessions:
