@@ -1071,7 +1071,9 @@ class DashboardPresenter:
         roi = self.statistics.calculate_roi_metrics(sessions, interactions)
         return ROIViewModel(
             total_sessions=len(sessions),
-            completed_sessions=roi["time_metrics"]["completed_sessions"],
+            completed_sessions=sum(
+                1 for s in sessions.values() if s.get("status") == "completed"
+            ),
             total_ai_hours=roi["time_metrics"]["total_ai_hours"],
             estimated_human_hours=roi["time_metrics"]["estimated_human_hours"],
             time_saved_hours=roi["time_metrics"]["time_saved_hours"],
