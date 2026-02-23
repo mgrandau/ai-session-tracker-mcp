@@ -161,20 +161,27 @@ The agent mode persists for your chat session.
 
 ### Codex Plugin (VS Code only)
 
-**Important:** First enable IDE context access:
+**Important:** Codex does not auto-start the MCP server or load agent instructions like VS Code does via `mcp.json`. You need to tell Codex to adopt the Session Tracked Agent at the start of each conversation.
+
+**Step 1:** Enable IDE context access:
 
 1. In the Codex chat input, ensure **"Include IDE context"** is turned **ON**
 2. Look for a **blue icon** — this confirms Codex can see your IDE context (files, selections, workspace structure)
 
 Without IDE context enabled, the agent cannot access your workspace and session tracking may not function properly.
 
-Then at the start of your conversation, type:
+**Step 2:** At the start of your conversation, tell Codex to use the agent:
 
 ```text
 Use the Session Tracked Agent as the default for the rest of the conversation.
 ```
 
-Codex will then track sessions automatically for all subsequent interactions.
+This makes Codex:
+- Start the MCP server (creating `.ai_sessions/` if it doesn't exist)
+- Follow the session tracking instructions in `.github/instructions/`
+- Track sessions automatically for all subsequent interactions
+
+> ⚠️ **Without this step**, Codex won't know to start the MCP server and you'll get errors like "sessions.json doesn't exist". This is the most common setup issue with Codex.
 
 ---
 
