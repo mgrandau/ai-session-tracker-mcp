@@ -155,12 +155,36 @@ class TestWebAppCreation:
         assert "/api/report" in routes
 
     def test_create_app_mounts_static_files_when_directory_exists(self) -> None:
-        """Verifies create_app mounts static files when static directory exists.
+        """Verifies create_app mounts static files when the static directory exists.
 
-        Tests that when the static directory exists, it gets mounted at /static.
+        Tests static asset mounting behavior by simulating a present static directory
+        and confirming the app registers a StaticFiles mount.
 
         Business context:
-        Static files (CSS, JS) need to be served when present for dashboard styling.
+        The web dashboard relies on static assets (CSS, JavaScript, images) for
+        styling and interactivity. When deployed, these files must be served by
+        the application if the static directory is present on disk.
+
+        Arrangement:
+        1. Create a mock Path object that reports exists() as True, simulating
+           a valid static directory on the filesystem.
+        2. Patch the Path class in the web.app module so path resolution
+           returns the mocked static directory.
+        3. Patch StaticFiles to prevent actual filesystem access and to allow
+           verification that it was instantiated during app creation.
+
+        Action:
+        Calls create_app(), which internally checks for the static directory
+        and conditionally mounts it as a StaticFiles route.
+
+        Assertion Strategy:
+        Validates conditional mounting by confirming:
+        - StaticFiles was called exactly once, proving the mount was registered
+          when the directory exists.
+
+        Testing Principle:
+        Validates conditional behavior branching, ensuring that static asset
+        serving is only activated when the required directory is present.
         """
         from pathlib import Path
         from unittest.mock import MagicMock

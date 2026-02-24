@@ -108,7 +108,7 @@ def analyze_file(
 
     try:
         code = file_path.read_text(encoding="utf-8")
-        results = analyzer.analyze(code, str(file_path))
+        results = analyzer.analyze(code)
 
         # Clean up results for JSON output
         functions = [

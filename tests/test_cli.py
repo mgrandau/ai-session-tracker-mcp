@@ -1091,11 +1091,30 @@ class TestRunInstall:
             )
 
     def test_run_install_writes_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install creates .ai_sessions.yaml with project name.
+        """Verifies run_install creates .ai_sessions.yaml with project name derived from cwd.
+
+        Tests that the install command auto-generates a project configuration file
+        using the current working directory's basename as the project identifier.
 
         Business context:
         .ai_sessions.yaml stores the project name so agents can auto-populate
-        the project field in session metadata without manual input.
+        the project field in session metadata without manual input. This reduces
+        friction for first-time users by providing sensible defaults.
+
+        Arrangement:
+        1. Use mock filesystem to isolate file operations.
+        2. Set cwd to '/project/my-api' so basename 'my-api' becomes project name.
+
+        Action:
+        Call run_install with default parameters, letting it auto-create the yaml file.
+
+        Assertion Strategy:
+        Validates file creation and content by confirming:
+        - The .ai_sessions.yaml file exists in the project root.
+        - The file contains 'project: my-api' derived from the directory name.
+
+        Testing Principle:
+        Validates convention-over-configuration, ensuring zero-touch project setup.
         """
         from ai_session_tracker_mcp.cli import run_install
 
@@ -1106,11 +1125,30 @@ class TestRunInstall:
         assert "project: my-api" in yaml_content
 
     def test_run_install_skips_existing_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install does not overwrite existing .ai_sessions.yaml.
+        """Verifies run_install preserves existing .ai_sessions.yaml without overwriting.
+
+        Tests that re-running install on a project with a pre-existing configuration
+        file leaves the user's customizations intact.
 
         Business context:
-        Users may customize .ai_sessions.yaml (e.g., rename project). The
-        install command must not overwrite manual customizations.
+        Users may customize .ai_sessions.yaml (e.g., rename project, add settings).
+        The install command must not overwrite manual customizations, as this would
+        destroy user work and erode trust in the tool's non-destructive behavior.
+
+        Arrangement:
+        1. Pre-create .ai_sessions.yaml with custom content 'project: custom-name'.
+        2. Use mock filesystem to track file state across the install operation.
+
+        Action:
+        Call run_install on the same project directory that already has the yaml file.
+
+        Assertion Strategy:
+        Validates idempotency by confirming:
+        - The yaml file content remains exactly 'project: custom-name\\n'.
+        - No truncation, append, or replacement occurred.
+
+        Testing Principle:
+        Validates non-destructive idempotency, ensuring repeated installs are safe.
         """
         from ai_session_tracker_mcp.cli import run_install
 
@@ -1123,11 +1161,31 @@ class TestRunInstall:
         assert yaml_content == "project: custom-name\n"
 
     def test_run_install_global_skips_ai_sessions_yaml(self, mock_fs: MockFileSystem) -> None:
-        """Verifies global install does not write .ai_sessions.yaml.
+        """Verifies global install does not create .ai_sessions.yaml in the project directory.
+
+        Tests that when --global flag is used, the install targets shared VS Code
+        settings rather than creating project-specific configuration files.
 
         Business context:
         Global installs target a shared VS Code settings directory, not any
-        specific project root, so .ai_sessions.yaml is not applicable.
+        specific project root, so .ai_sessions.yaml is not applicable. Creating
+        it would be misleading since global installs are project-agnostic.
+
+        Arrangement:
+        1. Mock Path.home() to control the home directory path.
+        2. Use mock filesystem to verify no yaml file is created.
+
+        Action:
+        Call run_install with global_install=True to trigger global install path.
+
+        Assertion Strategy:
+        Validates scope separation by confirming:
+        - No .ai_sessions.yaml exists in the project directory after global install.
+        - Global install path diverges from local install behavior.
+
+        Testing Principle:
+        Validates install mode isolation, ensuring global installs don't leak
+        project-level artifacts.
         """
         from ai_session_tracker_mcp.cli import run_install
 
@@ -1361,7 +1419,30 @@ class TestRunService:
             assert result == 1
 
     def test_run_service_stop_success(self) -> None:
-        """Verifies run_service stop returns 0 on success."""
+        """Verifies run_service stop returns exit code 0 on successful service shutdown.
+
+        Tests that the service stop action delegates to the service manager's stop
+        method and translates a True result into a zero exit code.
+
+        Business context:
+        Service stop must communicate success clearly via exit codes so that
+        shell scripts and automation tools can chain operations reliably.
+
+        Arrangement:
+        1. Create mock service manager with stop() returning True (success).
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('stop') to trigger the stop action path.
+
+        Assertion Strategy:
+        Validates successful stop by confirming:
+        - Return code is 0 (success).
+        - mock_manager.stop() was called exactly once.
+
+        Testing Principle:
+        Validates exit code contract, ensuring success maps to zero exit.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1376,7 +1457,29 @@ class TestRunService:
             mock_manager.stop.assert_called_once()
 
     def test_run_service_stop_failure(self) -> None:
-        """Verifies run_service stop returns 1 on failure."""
+        """Verifies run_service stop returns exit code 1 when service fails to stop.
+
+        Tests that the stop action translates a False result from the service
+        manager into a non-zero exit code indicating failure.
+
+        Business context:
+        Service stop failure (e.g., permission denied, PID stale) must be
+        communicated via exit code so callers can handle errors appropriately.
+
+        Arrangement:
+        1. Create mock service manager with stop() returning False (failure).
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('stop') to trigger the stop action path.
+
+        Assertion Strategy:
+        Validates failure signaling by confirming:
+        - Return code is 1 (failure).
+
+        Testing Principle:
+        Validates error propagation, ensuring failures are not silently swallowed.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1390,7 +1493,31 @@ class TestRunService:
             assert result == 1
 
     def test_run_service_status_returns_info(self) -> None:
-        """Verifies run_service status returns status information."""
+        """Verifies run_service status queries and returns service state information.
+
+        Tests that the status action delegates to the service manager's status
+        method and returns exit code 0 after successfully retrieving status info.
+
+        Business context:
+        Service status is critical for operational monitoring. Users and scripts
+        need to query whether the background service is installed and running.
+
+        Arrangement:
+        1. Create mock service manager returning a status dict with installed,
+           running, and status fields.
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('status') to query the current service state.
+
+        Assertion Strategy:
+        Validates status retrieval by confirming:
+        - Return code is 0 (successful query).
+        - mock_manager.status() was called exactly once.
+
+        Testing Principle:
+        Validates query path, ensuring status checks complete without side effects.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1409,7 +1536,30 @@ class TestRunService:
             mock_manager.status.assert_called_once()
 
     def test_run_service_uninstall_success(self) -> None:
-        """Verifies run_service uninstall returns 0 on success."""
+        """Verifies run_service uninstall returns exit code 0 on successful removal.
+
+        Tests that the uninstall action delegates to the service manager's uninstall
+        method and translates a True result into a zero exit code.
+
+        Business context:
+        Clean service removal is essential for users who want to switch to manual
+        session tracking or uninstall the tool entirely without leaving orphan services.
+
+        Arrangement:
+        1. Create mock service manager with uninstall() returning True.
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('uninstall') to trigger the uninstall path.
+
+        Assertion Strategy:
+        Validates successful uninstall by confirming:
+        - Return code is 0 (success).
+        - mock_manager.uninstall() was called exactly once.
+
+        Testing Principle:
+        Validates cleanup contract, ensuring uninstall completes and signals success.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1424,7 +1574,29 @@ class TestRunService:
             mock_manager.uninstall.assert_called_once()
 
     def test_run_service_uninstall_failure(self) -> None:
-        """Verifies run_service uninstall returns 1 on failure."""
+        """Verifies run_service uninstall returns exit code 1 on failure.
+
+        Tests that a failed uninstall (e.g., service files locked, permission denied)
+        is properly communicated through the exit code.
+
+        Business context:
+        Failed uninstalls can leave stale service configurations. Proper error
+        signaling lets callers alert users or retry with elevated permissions.
+
+        Arrangement:
+        1. Create mock service manager with uninstall() returning False.
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('uninstall') to trigger the uninstall failure path.
+
+        Assertion Strategy:
+        Validates failure signaling by confirming:
+        - Return code is 1 (failure).
+
+        Testing Principle:
+        Validates error exit code contract for uninstall failures.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1438,7 +1610,30 @@ class TestRunService:
             assert result == 1
 
     def test_run_service_unsupported_platform(self) -> None:
-        """Verifies run_service handles unsupported platform."""
+        """Verifies run_service handles unsupported platform gracefully with exit code 1.
+
+        Tests that when get_service_manager raises NotImplementedError (e.g., on an
+        unsupported OS like FreeBSD), run_service catches it and returns a failure code.
+
+        Business context:
+        The service feature is platform-specific (Linux systemd, macOS launchd).
+        Users on unsupported platforms need a clear error rather than a crash.
+
+        Arrangement:
+        1. Patch get_service_manager to raise NotImplementedError('Unsupported').
+        2. This simulates running on a platform without service support.
+
+        Action:
+        Call run_service('status') which triggers the manager lookup.
+
+        Assertion Strategy:
+        Validates graceful degradation by confirming:
+        - Return code is 1 (error, not exception propagation).
+        - No unhandled exception escapes the function.
+
+        Testing Principle:
+        Validates defensive error handling for platform-dependent features.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         with patch(
@@ -1449,7 +1644,30 @@ class TestRunService:
             assert result == 1
 
     def test_run_service_unknown_action(self) -> None:
-        """Verifies run_service handles unknown action."""
+        """Verifies run_service returns exit code 1 for unrecognized action strings.
+
+        Tests that passing an invalid action (not start/stop/status/uninstall) to
+        run_service is handled as an error rather than causing attribute errors.
+
+        Business context:
+        The CLI validates actions at the argparse level, but run_service must
+        also handle invalid actions defensively for direct callers and future
+        refactoring safety.
+
+        Arrangement:
+        1. Create a mock service manager (no specific method expectations).
+        2. Patch get_service_manager to return the mock.
+
+        Action:
+        Call run_service('invalid') with a non-existent action string.
+
+        Assertion Strategy:
+        Validates input validation by confirming:
+        - Return code is 1 (error for unknown action).
+
+        Testing Principle:
+        Validates robustness against invalid inputs at the function boundary.
+        """
         from ai_session_tracker_mcp.cli import run_service
 
         mock_manager = MagicMock()
@@ -1520,10 +1738,32 @@ class TestSessionStartCommand:
     """Tests for session start CLI command."""
 
     def test_start_command_parses_arguments(self) -> None:
-        """Verifies 'start' subcommand parses required arguments.
+        """Verifies 'start' subcommand correctly parses all required CLI arguments.
+
+        Tests that the argparse configuration for the 'start' subcommand properly
+        maps --name, --type, --model, --mins, and --source flags to the
+        run_session_start function parameters.
 
         Business context:
-        Session start requires specific parameters for tracking.
+        Session start requires specific parameters for tracking. Correct argument
+        parsing ensures session metadata is captured accurately from the first
+        interaction, which is critical for analytics and billing.
+
+        Arrangement:
+        1. Mock run_session_start to capture the parsed arguments.
+        2. Set sys.argv with all required flags and values.
+
+        Action:
+        Call main() to trigger argparse and route to the start subcommand.
+
+        Assertion Strategy:
+        Validates argument parsing by confirming:
+        - run_session_start called exactly once with correct keyword arguments.
+        - Each flag maps to the expected parameter name and value.
+        - Default values applied for optional args (context='', developer='', project='').
+
+        Testing Principle:
+        Validates CLI contract, ensuring user-facing flags match internal API parameters.
         """
         from ai_session_tracker_mcp.cli import main
 
@@ -1564,7 +1804,33 @@ class TestSessionStartCommand:
             assert result == 0
 
     def test_start_command_with_optional_args(self) -> None:
-        """Verifies 'start' subcommand accepts optional arguments."""
+        """Verifies 'start' subcommand accepts and passes optional arguments correctly.
+
+        Tests that optional flags like --context and --json are properly parsed
+        and forwarded to run_session_start alongside required arguments.
+
+        Business context:
+        Optional context and JSON output mode enhance session tracking flexibility.
+        Context provides additional metadata for analysis, while JSON output enables
+        programmatic integration with other tools.
+
+        Arrangement:
+        1. Mock run_session_start to capture the parsed arguments.
+        2. Set sys.argv with all required flags plus --context and --json.
+
+        Action:
+        Call main() to trigger argparse with the extended argument set.
+
+        Assertion Strategy:
+        Validates optional argument handling by confirming:
+        - context parameter receives the provided string value.
+        - json_output is True when --json flag is present.
+        - Required arguments are still correctly parsed alongside optional ones.
+
+        Testing Principle:
+        Validates extensibility of CLI interface, ensuring optional args don't
+        interfere with required argument parsing.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1606,7 +1872,31 @@ class TestSessionStartCommand:
             )
 
     def test_run_session_start_success(self) -> None:
-        """Verifies run_session_start returns 0 on success."""
+        """Verifies run_session_start returns exit code 0 when session creation succeeds.
+
+        Tests the happy path where the SessionService successfully creates a new
+        session and the CLI function translates this into a zero exit code.
+
+        Business context:
+        Session start is the entry point for all tracking. A successful start
+        means the session was persisted and can receive subsequent log/flag/end
+        operations. Exit code 0 signals to callers that tracking is active.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and a session_id in data.
+        2. Mock SessionService to return this result from start_session.
+
+        Action:
+        Call run_session_start with valid parameters to trigger session creation.
+
+        Assertion Strategy:
+        Validates successful creation by confirming:
+        - Return code is 0 (success).
+        - start_session was called exactly once on the service.
+
+        Testing Principle:
+        Validates happy-path exit code contract for session lifecycle operations.
+        """
         from ai_session_tracker_mcp.cli import run_session_start
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1633,7 +1923,30 @@ class TestSessionStartCommand:
             mock_service.start_session.assert_called_once()
 
     def test_run_session_start_failure(self) -> None:
-        """Verifies run_session_start returns 1 on failure."""
+        """Verifies run_session_start returns exit code 1 when session creation fails.
+
+        Tests the error path where the SessionService reports failure (e.g., invalid
+        parameters) and the CLI function translates this into a non-zero exit code.
+
+        Business context:
+        Invalid session parameters (bad task type, missing fields) must be
+        caught early and reported. A non-zero exit code allows automation to
+        detect and handle failed session starts.
+
+        Arrangement:
+        1. Create a ServiceResult with success=False and error details.
+        2. Mock SessionService to return this failure result.
+
+        Action:
+        Call run_session_start with parameters that trigger a service-level failure.
+
+        Assertion Strategy:
+        Validates failure propagation by confirming:
+        - Return code is 1 (failure).
+
+        Testing Principle:
+        Validates error propagation from service layer to CLI exit code.
+        """
         from ai_session_tracker_mcp.cli import run_session_start
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1663,7 +1976,32 @@ class TestSessionLogCommand:
     """Tests for session log CLI command."""
 
     def test_log_command_parses_arguments(self) -> None:
-        """Verifies 'log' subcommand parses required arguments."""
+        """Verifies 'log' subcommand correctly parses all required CLI arguments.
+
+        Tests that the argparse configuration for the 'log' subcommand properly
+        maps --session-id, --prompt, --summary, and --rating flags to the
+        run_session_log function parameters.
+
+        Business context:
+        Interaction logging captures the details of each AI prompt/response cycle.
+        Accurate argument parsing ensures session history is faithfully recorded
+        for later analysis and quality assessment.
+
+        Arrangement:
+        1. Mock run_session_log to capture the parsed arguments.
+        2. Set sys.argv with all required flags and values.
+
+        Action:
+        Call main() to trigger argparse and route to the log subcommand.
+
+        Assertion Strategy:
+        Validates argument parsing by confirming:
+        - run_session_log called with correct keyword arguments.
+        - Default values applied for optional args (iterations=1, tools=[]).
+
+        Testing Principle:
+        Validates CLI contract for the interaction logging interface.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1698,7 +2036,32 @@ class TestSessionLogCommand:
             )
 
     def test_log_command_with_optional_args(self) -> None:
-        """Verifies 'log' subcommand accepts optional arguments."""
+        """Verifies 'log' subcommand accepts optional arguments like --iterations, --tools, --json.
+
+        Tests that extended flags for iteration count, tool list, and JSON output
+        are properly parsed and forwarded alongside required arguments.
+
+        Business context:
+        Detailed interaction logs (iteration count, tools used) provide richer
+        analytics on AI session patterns. JSON output enables machine-readable
+        integration with dashboards and CI/CD pipelines.
+
+        Arrangement:
+        1. Mock run_session_log to capture all parsed arguments.
+        2. Set sys.argv with required flags plus --iterations, --tools, and --json.
+
+        Action:
+        Call main() to trigger argparse with the extended argument set.
+
+        Assertion Strategy:
+        Validates optional argument handling by confirming:
+        - iterations=3 parsed from --iterations flag.
+        - tools=['read_file', 'grep_search'] parsed as a list from --tools.
+        - json_output=True when --json flag is present.
+
+        Testing Principle:
+        Validates variadic argument parsing (--tools accepts multiple values).
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1739,7 +2102,30 @@ class TestSessionLogCommand:
             )
 
     def test_run_session_log_success(self) -> None:
-        """Verifies run_session_log returns 0 on success."""
+        """Verifies run_session_log returns exit code 0 when interaction logging succeeds.
+
+        Tests the happy path where the SessionService successfully logs an
+        interaction and the CLI function returns a zero exit code.
+
+        Business context:
+        Each logged interaction represents a prompt/response cycle. Successful
+        logging ensures the session history is complete for post-session review
+        and quality metrics.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and interaction_id in data.
+        2. Mock SessionService to return this result from log_interaction.
+
+        Action:
+        Call run_session_log with valid session_id, prompt, summary, and rating.
+
+        Assertion Strategy:
+        Validates successful logging by confirming:
+        - Return code is 0 (success).
+
+        Testing Principle:
+        Validates happy-path exit code for the interaction logging operation.
+        """
         from ai_session_tracker_mcp.cli import run_session_log
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1768,7 +2154,31 @@ class TestSessionEndCommand:
     """Tests for session end CLI command."""
 
     def test_end_command_parses_arguments(self) -> None:
-        """Verifies 'end' subcommand parses required arguments."""
+        """Verifies 'end' subcommand correctly parses required --session-id and --outcome flags.
+
+        Tests that the argparse configuration for the 'end' subcommand maps
+        required flags to run_session_end parameters with correct defaults.
+
+        Business context:
+        Session end marks the completion of an AI work session. Accurate parsing
+        of session ID and outcome is essential for duration calculation, outcome
+        tracking, and session lifecycle integrity.
+
+        Arrangement:
+        1. Mock run_session_end to capture the parsed arguments.
+        2. Set sys.argv with --session-id and --outcome flags.
+
+        Action:
+        Call main() to trigger argparse and route to the end subcommand.
+
+        Assertion Strategy:
+        Validates argument parsing by confirming:
+        - session_id and outcome are correctly mapped.
+        - Default values applied (notes='', final_estimate_minutes=None, json_output=False).
+
+        Testing Principle:
+        Validates CLI contract for session termination, ensuring clean lifecycle transitions.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1797,7 +2207,32 @@ class TestSessionEndCommand:
             )
 
     def test_end_command_with_notes(self) -> None:
-        """Verifies 'end' subcommand accepts notes argument."""
+        """Verifies 'end' subcommand accepts --notes and --json optional arguments.
+
+        Tests that optional flags for session notes and JSON output are properly
+        parsed and forwarded alongside the required session-id and outcome.
+
+        Business context:
+        Session notes capture developer retrospective comments about the AI session,
+        which are valuable for qualitative analysis. JSON output supports automation
+        that processes session completion events programmatically.
+
+        Arrangement:
+        1. Mock run_session_end to capture all parsed arguments.
+        2. Set sys.argv with required flags plus --notes and --json.
+
+        Action:
+        Call main() to trigger argparse with the extended argument set.
+
+        Assertion Strategy:
+        Validates optional argument handling by confirming:
+        - notes parameter receives the provided string value.
+        - json_output is True when --json flag is present.
+        - outcome is correctly parsed as 'partial'.
+
+        Testing Principle:
+        Validates optional argument coexistence with required arguments.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1829,7 +2264,30 @@ class TestSessionEndCommand:
             )
 
     def test_run_session_end_success(self) -> None:
-        """Verifies run_session_end returns 0 on success."""
+        """Verifies run_session_end returns exit code 0 when session termination succeeds.
+
+        Tests the happy path where the SessionService successfully ends a session,
+        calculates duration, and the CLI function returns a zero exit code.
+
+        Business context:
+        Session end triggers duration calculation and outcome recording. A
+        successful end means all session data is finalized and available for
+        analytics dashboards and reports.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and duration_minutes in data.
+        2. Mock SessionService to return this result from end_session.
+
+        Action:
+        Call run_session_end with valid session_id and outcome.
+
+        Assertion Strategy:
+        Validates successful termination by confirming:
+        - Return code is 0 (success).
+
+        Testing Principle:
+        Validates happy-path exit code for session lifecycle completion.
+        """
         from ai_session_tracker_mcp.cli import run_session_end
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1856,7 +2314,32 @@ class TestSessionFlagCommand:
     """Tests for session flag CLI command."""
 
     def test_flag_command_parses_arguments(self) -> None:
-        """Verifies 'flag' subcommand parses required arguments."""
+        """Verifies 'flag' subcommand correctly parses --session-id, --type, --desc, --severity.
+
+        Tests that the argparse configuration for the 'flag' subcommand properly
+        maps all required flags to run_session_flag function parameters.
+
+        Business context:
+        Issue flagging captures quality problems like hallucinations, incorrect code,
+        or performance issues during AI sessions. Accurate parsing ensures each flag
+        is categorized and attributed to the correct session for quality auditing.
+
+        Arrangement:
+        1. Mock run_session_flag to capture the parsed arguments.
+        2. Set sys.argv with --session-id, --type, --desc, and --severity flags.
+
+        Action:
+        Call main() to trigger argparse and route to the flag subcommand.
+
+        Assertion Strategy:
+        Validates argument parsing by confirming:
+        - All four required parameters are correctly mapped.
+        - issue_type maps from --type flag (note the name remapping).
+        - json_output defaults to False when --json is absent.
+
+        Testing Principle:
+        Validates CLI argument name mapping, especially --type to issue_type remapping.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1889,7 +2372,30 @@ class TestSessionFlagCommand:
             )
 
     def test_run_session_flag_success(self) -> None:
-        """Verifies run_session_flag returns 0 on success."""
+        """Verifies run_session_flag returns exit code 0 when issue flagging succeeds.
+
+        Tests the happy path where the SessionService successfully records a quality
+        issue against a session and the CLI function returns a zero exit code.
+
+        Business context:
+        Issue flags are the primary mechanism for tracking AI quality problems.
+        Successful flagging ensures issues are persisted and can be aggregated
+        for model quality scoring and regression detection.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and issue_id in data.
+        2. Mock SessionService to return this result from flag_issue.
+
+        Action:
+        Call run_session_flag with valid session_id, issue_type, description, severity.
+
+        Assertion Strategy:
+        Validates successful flagging by confirming:
+        - Return code is 0 (success).
+
+        Testing Principle:
+        Validates happy-path exit code for the quality flagging operation.
+        """
         from ai_session_tracker_mcp.cli import run_session_flag
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1918,7 +2424,30 @@ class TestSessionActiveCommand:
     """Tests for session active CLI command."""
 
     def test_active_command_parses_arguments(self) -> None:
-        """Verifies 'active' subcommand works with no arguments."""
+        """Verifies 'active' subcommand works with no arguments using defaults.
+
+        Tests that the 'active' subcommand can be invoked without any flags,
+        using default values for json_output.
+
+        Business context:
+        Checking active sessions is a frequent developer operation. The command
+        should work with zero arguments for quick status checks, lowering the
+        barrier to session awareness.
+
+        Arrangement:
+        1. Mock run_session_active to capture the parsed arguments.
+        2. Set sys.argv with only the 'active' subcommand (no flags).
+
+        Action:
+        Call main() to trigger argparse and route to the active subcommand.
+
+        Assertion Strategy:
+        Validates default argument handling by confirming:
+        - run_session_active called with json_output=False (default).
+
+        Testing Principle:
+        Validates zero-argument usability for the most common query operation.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1934,7 +2463,29 @@ class TestSessionActiveCommand:
             mock_run.assert_called_once_with(json_output=False)
 
     def test_active_command_with_json_flag(self) -> None:
-        """Verifies 'active' subcommand accepts --json flag."""
+        """Verifies 'active' subcommand accepts --json flag for machine-readable output.
+
+        Tests that the --json flag is correctly parsed and forwarded to
+        run_session_active for programmatic consumption of active session data.
+
+        Business context:
+        JSON output enables integration with monitoring dashboards, IDE extensions,
+        and CI/CD pipelines that need to query active session state programmatically.
+
+        Arrangement:
+        1. Mock run_session_active to capture the parsed arguments.
+        2. Set sys.argv with 'active' subcommand and --json flag.
+
+        Action:
+        Call main() to trigger argparse with the --json flag.
+
+        Assertion Strategy:
+        Validates JSON flag parsing by confirming:
+        - run_session_active called with json_output=True.
+
+        Testing Principle:
+        Validates output format toggle for machine-readable integration support.
+        """
         from ai_session_tracker_mcp.cli import main
 
         with (
@@ -1950,7 +2501,31 @@ class TestSessionActiveCommand:
             mock_run.assert_called_once_with(json_output=True)
 
     def test_run_session_active_with_sessions(self) -> None:
-        """Verifies run_session_active displays active sessions."""
+        """Verifies run_session_active displays active sessions and returns exit code 0.
+
+        Tests the happy path where active sessions exist and the function
+        successfully retrieves and outputs them.
+
+        Business context:
+        Active session listing lets developers see what AI sessions are in progress,
+        enabling them to resume tracking or detect orphaned sessions that need cleanup.
+
+        Arrangement:
+        1. Create a ServiceResult with one active session containing session_id,
+           session_name, task_type, and start_time.
+        2. Mock SessionService to return this result from get_active_sessions.
+
+        Action:
+        Call run_session_active with default parameters (text output mode).
+
+        Assertion Strategy:
+        Validates session retrieval by confirming:
+        - Return code is 0 (success).
+        - get_active_sessions was called exactly once on the service.
+
+        Testing Principle:
+        Validates query-and-display path for active session monitoring.
+        """
         from ai_session_tracker_mcp.cli import run_session_active
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -1980,7 +2555,30 @@ class TestSessionActiveCommand:
             mock_service.get_active_sessions.assert_called_once()
 
     def test_run_session_active_no_sessions(self) -> None:
-        """Verifies run_session_active handles empty result."""
+        """Verifies run_session_active handles empty session list gracefully.
+
+        Tests that when no active sessions exist, the function still returns
+        success (exit code 0) with an empty result set.
+
+        Business context:
+        No active sessions is a normal state, not an error. The CLI must
+        distinguish between 'no sessions found' (success with empty data) and
+        'query failed' (error), as callers rely on exit codes for control flow.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and empty active_sessions list.
+        2. Mock SessionService to return this result.
+
+        Action:
+        Call run_session_active with default parameters.
+
+        Assertion Strategy:
+        Validates empty-result handling by confirming:
+        - Return code is 0 (success, not error).
+
+        Testing Principle:
+        Validates empty-set semantics, ensuring absence of data is not treated as failure.
+        """
         from ai_session_tracker_mcp.cli import run_session_active
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -2004,7 +2602,32 @@ class TestOutputResult:
     """Tests for _output_result helper function."""
 
     def test_output_result_json_success(self) -> None:
-        """Verifies _output_result outputs JSON correctly."""
+        """Verifies _output_result outputs well-formed JSON to stdout on success.
+
+        Tests that when json_output=True, the result dict is serialized as valid
+        JSON and the function returns exit code 0 for successful results.
+
+        Business context:
+        JSON output mode is used by IDE extensions, scripts, and CI/CD pipelines
+        that parse CLI output programmatically. Malformed JSON would break all
+        downstream integrations.
+
+        Arrangement:
+        1. Create a result dict with success=True, message, and data fields.
+        2. Capture stdout via StringIO to inspect the JSON output.
+
+        Action:
+        Call _output_result with the result dict and json_output=True.
+
+        Assertion Strategy:
+        Validates JSON serialization by confirming:
+        - Exit code is 0 (success).
+        - Output is valid JSON (json.loads succeeds).
+        - Parsed JSON matches the original result dict exactly.
+
+        Testing Principle:
+        Validates output format fidelity for machine-readable integration.
+        """
         from ai_session_tracker_mcp.cli import _output_result
 
         result_dict = {
@@ -2023,7 +2646,30 @@ class TestOutputResult:
         assert parsed == result_dict
 
     def test_output_result_json_failure(self) -> None:
-        """Verifies _output_result returns 1 for failure."""
+        """Verifies _output_result returns exit code 1 for failed results in JSON mode.
+
+        Tests that the JSON serialization still occurs for failed results but
+        the function returns a non-zero exit code.
+
+        Business context:
+        Failed operations must still produce valid JSON output so that downstream
+        tools can parse the error details. The exit code (not the output format)
+        signals success vs. failure.
+
+        Arrangement:
+        1. Create a result dict with success=False and error details.
+        2. Capture stdout via StringIO.
+
+        Action:
+        Call _output_result with the failure result and json_output=True.
+
+        Assertion Strategy:
+        Validates failure exit code by confirming:
+        - Exit code is 1 (failure), independent of output format.
+
+        Testing Principle:
+        Validates separation of output format from exit code semantics.
+        """
         from ai_session_tracker_mcp.cli import _output_result
 
         result_dict = {
@@ -2039,7 +2685,32 @@ class TestOutputResult:
         assert exit_code == 1
 
     def test_output_result_text_success_with_data(self) -> None:
-        """Verifies _output_result text mode outputs data to stdout."""
+        """Verifies _output_result text mode outputs key-value data to stdout.
+
+        Tests that in text mode, successful results with data are formatted as
+        human-readable key-value pairs on stdout.
+
+        Business context:
+        Text mode is the default for interactive CLI usage. Developers expect
+        readable output showing the operation result and relevant data fields
+        without needing to parse JSON.
+
+        Arrangement:
+        1. Create a result dict with success=True and data containing count and status.
+        2. Capture stdout and mock _log to isolate stdout output.
+
+        Action:
+        Call _output_result with the result and json_output=False (text mode).
+
+        Assertion Strategy:
+        Validates text formatting by confirming:
+        - Exit code is 0 (success).
+        - Output contains 'count: 5' as a formatted key-value pair.
+        - Output contains 'status: ok' as a formatted key-value pair.
+
+        Testing Principle:
+        Validates human-readable output format for interactive CLI usage.
+        """
         from ai_session_tracker_mcp.cli import _output_result
 
         result_dict = {
@@ -2061,7 +2732,31 @@ class TestOutputResult:
         assert "status: ok" in output
 
     def test_output_result_text_failure_with_error(self) -> None:
-        """Verifies _output_result text mode outputs error details to stdout."""
+        """Verifies _output_result text mode outputs error details to stdout on failure.
+
+        Tests that failed results in text mode include the error message in the
+        output so users can understand what went wrong.
+
+        Business context:
+        Error messages provide actionable feedback to users. When a CLI operation
+        fails, the error detail (e.g., 'Database connection error') helps users
+        diagnose and resolve the issue without needing --json mode.
+
+        Arrangement:
+        1. Create a result dict with success=False and an error field.
+        2. Capture stdout and mock _log to isolate output.
+
+        Action:
+        Call _output_result with the failure result and json_output=False.
+
+        Assertion Strategy:
+        Validates error output by confirming:
+        - Exit code is 1 (failure).
+        - Output contains the specific error message 'Database connection error'.
+
+        Testing Principle:
+        Validates user-facing error messaging for CLI troubleshooting.
+        """
         from ai_session_tracker_mcp.cli import _output_result
 
         result_dict = {
@@ -2082,7 +2777,31 @@ class TestOutputResult:
         assert "Database connection error" in output
 
     def test_output_result_text_success_no_data(self) -> None:
-        """Verifies _output_result handles empty/missing data field."""
+        """Verifies _output_result text mode handles missing data field gracefully.
+
+        Tests the edge case where a successful result has no 'data' field,
+        ensuring no crash or spurious output occurs.
+
+        Business context:
+        Some operations (like session end) may succeed without returning data
+        beyond the success message. The output function must handle this without
+        printing empty or malformed data sections.
+
+        Arrangement:
+        1. Create a result dict with success=True but no 'data' key.
+        2. Capture stdout and mock _log to isolate output.
+
+        Action:
+        Call _output_result with the data-less result and json_output=False.
+
+        Assertion Strategy:
+        Validates empty-data handling by confirming:
+        - Exit code is 0 (success).
+        - Stdout is completely empty (no data fields to print).
+
+        Testing Principle:
+        Validates graceful handling of optional/absent response fields.
+        """
         from ai_session_tracker_mcp.cli import _output_result
 
         result_dict = {
@@ -2108,7 +2827,31 @@ class TestGenerateMcpServerConfig:
     """Tests for _generate_mcp_server_config helper."""
 
     def test_generate_config_with_env_example(self) -> None:
-        """Verifies config includes env example when requested."""
+        """Verifies _generate_mcp_server_config includes environment variable examples when requested.
+
+        Tests that with_env_example=True adds the _env_example key containing
+        environment variable documentation for user reference.
+
+        Business context:
+        Environment variables control runtime behavior (e.g., max session duration).
+        Including examples in the generated config helps users discover and configure
+        these settings without consulting external documentation.
+
+        Arrangement:
+        1. Create a basic server_config dict with command and args.
+
+        Action:
+        Call _generate_mcp_server_config with with_env_example=True.
+
+        Assertion Strategy:
+        Validates config generation by confirming:
+        - Command and args are preserved in the output.
+        - '_env_example' key is present in the result.
+        - Known env var 'AI_MAX_SESSION_DURATION_HOURS' appears in the example.
+
+        Testing Principle:
+        Validates configuration enrichment for developer experience.
+        """
         from ai_session_tracker_mcp.cli import _generate_mcp_server_config
 
         server_config = {"command": "/usr/bin/server", "args": ["run"]}
@@ -2120,7 +2863,30 @@ class TestGenerateMcpServerConfig:
         assert "AI_MAX_SESSION_DURATION_HOURS" in result["_env_example"]
 
     def test_generate_config_without_env_example(self) -> None:
-        """Verifies config excludes env example when not requested."""
+        """Verifies _generate_mcp_server_config excludes environment variable examples when not requested.
+
+        Tests that with_env_example=False produces a clean config without
+        the _env_example key, suitable for production deployment.
+
+        Business context:
+        Production configs should be minimal without documentation artifacts.
+        The env example is useful during setup but clutters production configs
+        and may confuse automated config parsers.
+
+        Arrangement:
+        1. Create a basic server_config dict with command and args.
+
+        Action:
+        Call _generate_mcp_server_config with with_env_example=False.
+
+        Assertion Strategy:
+        Validates minimal config by confirming:
+        - Command and args are preserved in the output.
+        - '_env_example' key is absent from the result.
+
+        Testing Principle:
+        Validates conditional config generation for different deployment contexts.
+        """
         from ai_session_tracker_mcp.cli import _generate_mcp_server_config
 
         server_config = {"command": "/usr/bin/server", "args": ["run"]}
@@ -2136,7 +2902,32 @@ class TestGlobalInstallPlatforms:
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
     def test_global_install_windows(self, mock_fs: MockFileSystem) -> None:
-        """Verifies global install uses Windows path on Windows."""
+        """Verifies global install writes MCP config to the Windows-specific VS Code path.
+
+        Tests platform-aware path resolution by running run_install with global_install=True
+        on a Windows host and confirming the config lands under AppData/Roaming.
+
+        Business context:
+        Users on Windows expect global MCP configuration to follow Windows conventions
+        (AppData/Roaming/Code/User); incorrect paths leave VS Code unable to discover the server.
+
+        Arrangement:
+        1. Patch Path.home to return a synthetic Windows home directory so the path
+           resolver computes the expected AppData location.
+
+        Action:
+        Calls run_install with global_install=True, triggering platform detection and
+        config file creation.
+
+        Assertion Strategy:
+        Validates correct platform routing by confirming:
+        - The mcp.json file exists at the Windows-specific global path.
+        - The written JSON contains the 'ai-session-tracker' server entry.
+
+        Testing Principle:
+        Validates platform-specific behavior isolation, ensuring Windows users receive
+        correctly placed configuration without cross-platform path leakage.
+        """
         import json
 
         from ai_session_tracker_mcp.cli import run_install
@@ -2160,7 +2951,32 @@ class TestGlobalInstallPlatforms:
 
     @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only test")
     def test_global_install_macos(self, mock_fs: MockFileSystem) -> None:
-        """Verifies global install uses macOS path on macOS."""
+        """Verifies global install writes MCP config to the macOS-specific VS Code path.
+
+        Tests platform-aware path resolution by running run_install with global_install=True
+        on a macOS host and confirming the config lands under Library/Application Support.
+
+        Business context:
+        macOS users expect global VS Code configuration under ~/Library/Application Support;
+        using the wrong path renders the MCP server invisible to VS Code on Mac.
+
+        Arrangement:
+        1. Patch Path.home to return a synthetic macOS home directory so the path
+           resolver computes the expected Library/Application Support location.
+
+        Action:
+        Calls run_install with global_install=True, triggering platform detection and
+        config file creation on macOS.
+
+        Assertion Strategy:
+        Validates correct platform routing by confirming:
+        - The mcp.json file exists at the macOS-specific global path.
+        - The written JSON contains the 'ai-session-tracker' server entry.
+
+        Testing Principle:
+        Validates platform-specific behavior isolation, ensuring macOS users receive
+        correctly placed configuration distinct from Windows or Linux paths.
+        """
         import json
 
         from ai_session_tracker_mcp.cli import run_install
@@ -2185,7 +3001,32 @@ class TestInstallServiceIntegration:
     """Tests for service installation during install command."""
 
     def test_install_with_service_success(self, mock_fs: MockFileSystem) -> None:
-        """Verifies install --service installs service successfully."""
+        """Verifies install --service delegates to the service manager and succeeds.
+
+        Tests the happy-path integration between the install command and the system
+        service manager by mocking a successful service installation.
+
+        Business context:
+        The --service flag enables automatic background-service registration during
+        install; confirming it calls the service manager ensures one-command setup works
+        end-to-end for users who want persistent session tracking.
+
+        Arrangement:
+        1. Create a mock service manager whose install() returns True (success).
+        2. Patch get_service_manager to return this mock.
+
+        Action:
+        Calls run_install with service=True, which should detect the flag, obtain a
+        service manager, and invoke its install method.
+
+        Assertion Strategy:
+        Validates service integration by confirming:
+        - The service manager's install method was called exactly once.
+
+        Testing Principle:
+        Validates delegation correctness, ensuring the install command properly wires
+        through to the platform service layer on success.
+        """
         from ai_session_tracker_mcp.cli import run_install
 
         mock_manager = MagicMock()
@@ -2202,7 +3043,33 @@ class TestInstallServiceIntegration:
         mock_manager.install.assert_called_once()
 
     def test_install_with_service_failure(self, mock_fs: MockFileSystem) -> None:
-        """Verifies install --service handles installation failure."""
+        """Verifies install --service handles a service installation failure gracefully.
+
+        Tests the failure path where the service manager's install returns False,
+        ensuring the install command does not crash or propagate an unhandled error.
+
+        Business context:
+        Service installation can fail for many reasons (permissions, missing systemd,
+        etc.); the CLI must degrade gracefully so the rest of the install (config files,
+        agent files) is not lost.
+
+        Arrangement:
+        1. Create a mock service manager whose install() returns False (failure).
+        2. Patch get_service_manager to return this mock.
+
+        Action:
+        Calls run_install with service=True, triggering the service installation path
+        that will encounter the simulated failure.
+
+        Assertion Strategy:
+        Validates graceful degradation by confirming:
+        - The service manager's install method was called exactly once.
+        - No exception propagated to the caller.
+
+        Testing Principle:
+        Validates fault tolerance, ensuring partial failures in optional features do not
+        abort the overall install workflow.
+        """
         from ai_session_tracker_mcp.cli import run_install
 
         mock_manager = MagicMock()
@@ -2219,7 +3086,32 @@ class TestInstallServiceIntegration:
         mock_manager.install.assert_called_once()
 
     def test_install_with_service_not_supported(self, mock_fs: MockFileSystem) -> None:
-        """Verifies install --service handles unsupported platform."""
+        """Verifies install --service handles an unsupported platform without crashing.
+
+        Tests the edge case where get_service_manager raises NotImplementedError,
+        simulating a platform (e.g., BSD, container) that has no service integration.
+
+        Business context:
+        Not every OS supports system-service registration; the CLI must warn users
+        rather than crash, so the install can still complete its primary purpose of
+        writing configuration and agent files.
+
+        Arrangement:
+        1. Patch get_service_manager to raise NotImplementedError with a descriptive
+           message, simulating an unsupported platform.
+
+        Action:
+        Calls run_install with service=True on the simulated unsupported platform.
+
+        Assertion Strategy:
+        Validates resilience by confirming:
+        - No exception propagates to the caller (implicit: test passes without error).
+        - The install continues despite the unsupported service backend.
+
+        Testing Principle:
+        Validates defensive error handling, ensuring optional feature failures on
+        unsupported platforms are caught and logged rather than raised.
+        """
         from ai_session_tracker_mcp.cli import run_install
 
         with patch(
@@ -2239,7 +3131,32 @@ class TestRunSessionActiveErrors:
     """Tests for run_session_active error handling."""
 
     def test_run_session_active_failure(self) -> None:
-        """Verifies run_session_active handles service failure."""
+        """Verifies run_session_active returns exit code 1 when the service reports failure.
+
+        Tests the error-path return code by supplying a ServiceResult with success=False
+        and confirming the CLI function signals failure to the caller.
+
+        Business context:
+        Callers (shell scripts, CI pipelines) rely on non-zero exit codes to detect
+        failures; returning 0 on error would silently mask database or service issues.
+
+        Arrangement:
+        1. Create a ServiceResult with success=False and an error message simulating
+           a database-unavailable scenario.
+        2. Patch SessionService so get_active_sessions returns this failure result.
+
+        Action:
+        Calls run_session_active with default arguments, which delegates to the mocked
+        service and receives the failure result.
+
+        Assertion Strategy:
+        Validates error signaling by confirming:
+        - The return value is 1 (non-zero exit code indicating failure).
+
+        Testing Principle:
+        Validates exit-code contract fidelity, ensuring service-layer failures are
+        faithfully propagated as CLI error codes.
+        """
         from ai_session_tracker_mcp.cli import run_session_active
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -2259,7 +3176,34 @@ class TestRunSessionActiveErrors:
             assert result == 1
 
     def test_run_session_active_json_output(self, capsys: Any) -> None:
-        """Verifies run_session_active outputs JSON when json_output=True."""
+        """Verifies run_session_active emits structured JSON when json_output=True.
+
+        Tests the JSON output mode by supplying a successful ServiceResult with session
+        data and confirming the stdout contains valid, expected JSON fields.
+
+        Business context:
+        Machine-readable JSON output enables scripting and tool integration (e.g.,
+        dashboards, CI checks); malformed or missing JSON breaks downstream consumers.
+
+        Arrangement:
+        1. Create a ServiceResult with success=True and a data payload containing one
+           active session, simulating a normal query response.
+        2. Patch SessionService so get_active_sessions returns this result.
+
+        Action:
+        Calls run_session_active with json_output=True, requesting structured output
+        to stdout instead of human-readable text.
+
+        Assertion Strategy:
+        Validates JSON serialization by confirming:
+        - The return value is 0 (success).
+        - Captured stdout contains '"success": true' indicating correct serialization.
+        - Captured stdout contains '"active_sessions"' proving the data payload is included.
+
+        Testing Principle:
+        Validates output format contract, ensuring the JSON mode produces parseable,
+        complete output that downstream tooling can rely on.
+        """
         from ai_session_tracker_mcp.cli import run_session_active
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -2282,7 +3226,35 @@ class TestRunSessionActiveErrors:
             assert '"active_sessions"' in captured.out
 
     def test_run_session_active_failure_with_error_output(self, capsys: Any) -> None:
-        """Verifies run_session_active prints error message on failure."""
+        """Verifies run_session_active prints the error detail to stdout on failure.
+
+        Tests the user-facing error reporting by supplying a failed ServiceResult with
+        an error string and confirming it appears in captured stdout.
+
+        Business context:
+        When session queries fail, users need actionable error messages (e.g.,
+        'Database unavailable') to diagnose the issue; silent failures lead to
+        confusion and support burden.
+
+        Arrangement:
+        1. Create a ServiceResult with success=False and error='Database unavailable',
+           simulating a backend failure with a diagnostic message.
+        2. Patch SessionService so get_active_sessions returns this failure result.
+
+        Action:
+        Calls run_session_active with default arguments, which receives the failure
+        and should print the error detail to stdout.
+
+        Assertion Strategy:
+        Validates error reporting by confirming:
+        - The return value is 1 (failure exit code).
+        - Captured stdout contains 'Database unavailable', proving the error message
+          reaches the user.
+
+        Testing Principle:
+        Validates user-facing error transparency, ensuring backend errors surface as
+        readable messages rather than being swallowed silently.
+        """
         from ai_session_tracker_mcp.cli import run_session_active
         from ai_session_tracker_mcp.session_service import ServiceResult
 
@@ -2308,7 +3280,35 @@ class TestCopyAgentFilesDirectories:
     """Tests for _copy_agent_files handling directories."""
 
     def test_copy_agent_files_skips_directories(self, mock_fs: MockFileSystem) -> None:
-        """Verifies _copy_agent_files skips directories in iterdir."""
+        """Verifies _copy_agent_files copies regular files but skips subdirectories.
+
+        Tests the file-vs-directory discrimination logic by placing both a file and a
+        subdirectory in the source tree and confirming only the file is copied.
+
+        Business context:
+        Agent file bundles may contain nested directories (e.g., for organization);
+        blindly copying directories as if they were files would create corrupt entries
+        or crash on read. Only regular files should be transferred.
+
+        Arrangement:
+        1. Create a source directory with one regular file (test.agent.md) and one
+           subdirectory (subdir) under /pkg/agent_files/agents.
+        2. Override mock_fs.is_file to return False for paths ending in 'subdir',
+           simulating filesystem directory detection.
+
+        Action:
+        Calls _copy_agent_files, which iterates the source directory and should copy
+        only entries that pass the is_file check.
+
+        Assertion Strategy:
+        Validates selective copying by confirming:
+        - The regular file exists at the destination (.github/agents/test.agent.md).
+        - The subdirectory was NOT created as a file at the destination.
+
+        Testing Principle:
+        Validates input filtering, ensuring the copy operation discriminates between
+        files and directories to prevent corrupted or unexpected output.
+        """
         from ai_session_tracker_mcp.cli import _copy_agent_files
 
         # Create source with both files and directories
@@ -2320,6 +3320,36 @@ class TestCopyAgentFilesDirectories:
         original_is_file = mock_fs.is_file
 
         def is_file_with_dir(path: str) -> bool:
+            """Returns False for paths ending in 'subdir' to simulate directory detection.
+
+            Acts as a test double for mock_fs.is_file, enabling the test to verify that
+            _copy_agent_files correctly skips non-file entries during iteration. Delegates
+            to the original is_file for all other paths to preserve normal behavior.
+
+            Business context:
+            Real filesystems distinguish files from directories; this helper injects that
+            distinction into the mock filesystem so the copy logic can be tested for
+            correct filtering without touching a real disk.
+
+            Args:
+                path: The filesystem path to check. Paths ending in 'subdir' are treated
+                    as directories (returns False); all others delegate to the original
+                    mock_fs.is_file implementation.
+
+            Returns:
+                False if the path ends with 'subdir' (simulating a directory entry),
+                otherwise the result of the original mock_fs.is_file(path).
+
+            Raises:
+                No exceptions raised directly; delegates to original_is_file which may
+                raise if the path is invalid in the mock filesystem.
+
+            Example:
+                >>> is_file_with_dir('/pkg/agent_files/agents/subdir')
+                False
+                >>> is_file_with_dir('/pkg/agent_files/agents/test.agent.md')
+                True  # assuming original_is_file returns True
+            """
             if path.endswith("subdir"):
                 return False
             return original_is_file(path)

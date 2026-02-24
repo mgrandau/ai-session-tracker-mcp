@@ -1167,12 +1167,72 @@ class TestStorageManagerOutputDir:
     """Tests for AI_OUTPUT_DIR environment variable redirect."""
 
     def teardown_method(self) -> None:
+        """Resets Config test overrides after each test method.
+
+        Ensures environment-level configuration state does not leak between
+        tests in this class, which manipulate AI_OUTPUT_DIR and related settings.
+
+        Business context:
+        Tests in this class override Config to simulate different output directory
+        configurations. Without cleanup, a prior test's override could pollute
+        subsequent tests, causing false passes or spurious failures.
+
+        Args:
+            self: The test class instance (pytest convention).
+
+        Returns:
+            None. This is a side-effect-only teardown that restores global state.
+
+        Raises:
+            No exceptions expected. Config.reset_test_overrides() is designed
+            to be safe to call unconditionally without error.
+
+        Action:
+        Calls Config.reset_test_overrides() to restore the default configuration
+        state so each test starts with a clean slate.
+
+        Example:
+            Called automatically by pytest after each test method::
+
+                # After test_uses_output_dir_env_var runs:
+                # teardown_method() → Config.reset_test_overrides()
+                # Config is now back to defaults for the next test.
+
+        Testing Principle:
+        Validates test isolation, ensuring each test in the class operates
+        against a known-clean configuration baseline.
+        """
         from ai_session_tracker_mcp.config import Config
 
         Config.reset_test_overrides()
 
     def test_uses_output_dir_env_var(self, mock_fs: MockFileSystem) -> None:
-        """Verifies StorageManager uses AI_OUTPUT_DIR when set."""
+        """Verifies StorageManager adopts the AI_OUTPUT_DIR path when configured.
+
+        Tests that the output directory redirect feature correctly routes storage
+        to a custom location specified via Config.
+
+        Business context:
+        AI_OUTPUT_DIR allows teams and CI pipelines to redirect session data to
+        shared or ephemeral directories without modifying application code. This
+        is the primary integration point for configurable storage locations.
+
+        Arrangement:
+        1. Overrides Config with output_dir="/custom/output" to simulate the
+           AI_OUTPUT_DIR environment variable being set.
+
+        Action:
+        Creates a StorageManager without an explicit storage_dir argument,
+        forcing it to resolve the path from Config.
+
+        Assertion Strategy:
+        Validates correct path resolution by confirming:
+        - storage_dir equals the overridden "/custom/output" path.
+
+        Testing Principle:
+        Validates environment-driven configuration, ensuring external settings
+        propagate correctly into runtime storage paths.
+        """
         from ai_session_tracker_mcp.config import Config
 
         with Config.override_for_test(output_dir="/custom/output"):
@@ -1180,7 +1240,33 @@ class TestStorageManagerOutputDir:
             assert storage.storage_dir == "/custom/output"
 
     def test_falls_back_to_default_when_env_unset(self, mock_fs: MockFileSystem) -> None:
-        """Verifies StorageManager uses default dir when AI_OUTPUT_DIR is not set."""
+        """Verifies StorageManager falls back to the default directory when no override is set.
+
+        Tests the fallback behavior when the AI_OUTPUT_DIR environment variable
+        is absent, ensuring the system has a safe default.
+
+        Business context:
+        Most users won't configure AI_OUTPUT_DIR explicitly. The default storage
+        directory must be reliable and predictable so that session data is always
+        persisted to a known location out of the box.
+
+        Arrangement:
+        1. Clears all environment variables via patch.dict to simulate a clean
+           environment with no AI_OUTPUT_DIR set.
+        2. Resets Config test overrides to remove any prior configuration state.
+
+        Action:
+        Creates a StorageManager without arguments, relying entirely on Config's
+        default path resolution.
+
+        Assertion Strategy:
+        Validates default path selection by confirming:
+        - storage_dir matches Config.STORAGE_DIR, the canonical default location.
+
+        Testing Principle:
+        Validates graceful degradation, ensuring the system operates correctly
+        when optional configuration is absent.
+        """
         from ai_session_tracker_mcp.config import Config
 
         with patch.dict(os.environ, {}, clear=True):
@@ -1189,7 +1275,33 @@ class TestStorageManagerOutputDir:
             assert storage.storage_dir == Config.STORAGE_DIR
 
     def test_explicit_storage_dir_overrides_env_var(self, mock_fs: MockFileSystem) -> None:
-        """Verifies explicit storage_dir argument takes precedence over AI_OUTPUT_DIR."""
+        """Verifies explicit storage_dir argument takes precedence over AI_OUTPUT_DIR.
+
+        Tests the priority hierarchy of storage path configuration, confirming
+        that a directly-passed argument wins over environment-level settings.
+
+        Business context:
+        When both AI_OUTPUT_DIR and an explicit storage_dir are provided, the
+        explicit argument must win. This allows callers to programmatically
+        override environment defaults for testing, migration, or multi-instance
+        scenarios without altering global configuration.
+
+        Arrangement:
+        1. Sets Config output_dir to "/env/path" to simulate AI_OUTPUT_DIR being
+           configured at the environment level.
+
+        Action:
+        Creates a StorageManager with an explicit storage_dir="/explicit/path"
+        while the environment override is active, triggering the precedence logic.
+
+        Assertion Strategy:
+        Validates configuration precedence by confirming:
+        - storage_dir equals "/explicit/path", not the environment's "/env/path".
+
+        Testing Principle:
+        Validates explicit-over-implicit precedence, ensuring direct arguments
+        always override ambient configuration for deterministic behavior.
+        """
         from ai_session_tracker_mcp.config import Config
 
         with Config.override_for_test(output_dir="/env/path"):
@@ -1197,7 +1309,35 @@ class TestStorageManagerOutputDir:
             assert storage.storage_dir == "/explicit/path"
 
     def test_output_dir_creates_correct_file_paths(self, mock_fs: MockFileSystem) -> None:
-        """Verifies files are created inside the output dir."""
+        """Verifies all data files are created under the configured output directory.
+
+        Tests that the output directory setting correctly propagates to all
+        individual file paths managed by StorageManager.
+
+        Business context:
+        StorageManager manages multiple data files (sessions, interactions, issues).
+        When AI_OUTPUT_DIR redirects storage, all files must land in the new
+        directory — a partial redirect would split data across locations, causing
+        data loss or inconsistent state for downstream consumers.
+
+        Arrangement:
+        1. Sets Config output_dir to "/team/share/jsmith" to simulate a team
+           shared storage directory, a realistic multi-user deployment scenario.
+
+        Action:
+        Creates a StorageManager and inspects the resolved paths for all three
+        data files it manages.
+
+        Assertion Strategy:
+        Validates complete path propagation by confirming:
+        - sessions_file starts with the configured output directory prefix.
+        - interactions_file starts with the configured output directory prefix.
+        - issues_file starts with the configured output directory prefix.
+
+        Testing Principle:
+        Validates holistic configuration propagation, ensuring a single setting
+        consistently affects all derived paths without exceptions.
+        """
         from ai_session_tracker_mcp.config import Config
 
         with Config.override_for_test(output_dir="/team/share/jsmith"):

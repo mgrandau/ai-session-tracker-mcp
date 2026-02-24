@@ -2789,7 +2789,35 @@ class TestAdditionalCoverage:
     async def test_boolop_complexity_calculation(self, server: SessionTrackerServer) -> None:
         """Verifies complexity calculation includes BoolOp nodes (and/or).
 
-        Tests that boolean operators correctly add to cyclomatic complexity.
+        Tests that boolean operators (and/or) correctly contribute to cyclomatic
+        complexity calculations, ensuring the AST visitor accounts for compound
+        boolean expressions rather than treating them as single conditions.
+
+        Business context:
+        Accurate cyclomatic complexity scoring is critical for code quality metrics.
+        Boolean operators like `and`/`or` introduce additional execution paths that
+        must be reflected in complexity counts; otherwise, developers receive
+        misleadingly low complexity scores for heavily conditional code.
+
+        Arrangement:
+        1. Creates an active session to associate metrics with a tracked workflow.
+        2. Writes a temporary Python file containing a function with multiple
+           `and`/`or` boolean operators to exercise BoolOp AST node handling.
+
+        Action:
+        Invokes _handle_log_code_metrics on the temporary file, triggering the
+        AST-based complexity analyzer to parse and score the boolean expressions.
+
+        Assertion Strategy:
+        Validates correct BoolOp contribution by confirming:
+        - Result contains a successful "result" key (no error).
+        - average_complexity is at least 4, reflecting the base complexity (1)
+          plus if-statements (2) plus BoolOp contributions from compound
+          boolean expressions.
+
+        Testing Principle:
+        Validates completeness of the cyclomatic complexity algorithm, ensuring
+        all control-flow-affecting constructs are accounted for.
         """
         import os
         import tempfile
@@ -2833,7 +2861,38 @@ def func_with_boolops(x, y, z):
 
     @pytest.mark.asyncio
     async def test_log_code_metrics_session_not_found(self, server: SessionTrackerServer) -> None:
-        """Verifies log_code_metrics returns error for non-existent session."""
+        """Verifies log_code_metrics returns error for non-existent session.
+
+        Tests the session validation guard clause in the code metrics handler,
+        ensuring that attempts to log metrics against a session that does not
+        exist are gracefully rejected with an appropriate error response.
+
+        Business context:
+        Session integrity is essential for accurate tracking. If metrics could be
+        logged against non-existent sessions, orphaned data would accumulate and
+        corrupt reporting. This guard ensures every metric entry traces back to a
+        valid session.
+
+        Arrangement:
+        1. Creates a valid temporary Python file so the file-path validation
+           does not interfere with the session-not-found check under test.
+        2. Does NOT create any session in storage, ensuring the session lookup
+           will fail.
+
+        Action:
+        Calls _handle_log_code_metrics with a valid file but a session_id
+        ("nonexistent_session") that has no corresponding storage entry.
+
+        Assertion Strategy:
+        Validates proper error propagation by confirming:
+        - The result dictionary contains an "error" key, indicating the handler
+          correctly identified the missing session and returned a structured
+          error rather than raising an unhandled exception.
+
+        Testing Principle:
+        Validates defensive input validation, ensuring the system fails fast
+        with clear error feedback when preconditions are not met.
+        """
         import os
         import tempfile
 
@@ -2860,7 +2919,38 @@ def func_with_boolops(x, y, z):
     async def test_get_active_sessions_exception_handling(
         self, server: SessionTrackerServer
     ) -> None:
-        """Verifies get_active_sessions handles storage exceptions."""
+        """Verifies get_active_sessions handles storage exceptions gracefully.
+
+        Tests the error-handling path in the active sessions handler when the
+        underlying storage layer raises an unexpected exception, ensuring the
+        server returns a structured MCP error rather than crashing.
+
+        Business context:
+        Storage failures (disk errors, corruption, permission issues) can occur
+        in production. The MCP server must remain operational and return
+        meaningful error responses so that connected AI clients can handle the
+        failure gracefully instead of receiving an opaque transport error.
+
+        Arrangement:
+        1. Replaces the storage's load_sessions method with a MagicMock that
+           raises a generic Exception("Storage error"), simulating a storage
+           layer failure without requiring actual disk corruption.
+
+        Action:
+        Calls _handle_get_active_sessions with an empty params dict, triggering
+        the mocked storage to raise an exception during session retrieval.
+
+        Assertion Strategy:
+        Validates graceful degradation by confirming:
+        - The result contains an "error" key rather than propagating the
+          exception to the caller.
+        - The error message includes "Failed to get active sessions", verifying
+          the handler wraps the low-level exception with a user-friendly message.
+
+        Testing Principle:
+        Validates fault tolerance and error boundary isolation, ensuring storage
+        layer failures are caught and translated into structured error responses.
+        """
         from unittest.mock import MagicMock
 
         # Make storage raise exception
@@ -2875,7 +2965,39 @@ def func_with_boolops(x, y, z):
     async def test_log_code_metrics_initializes_code_metrics_list(
         self, server: SessionTrackerServer
     ) -> None:
-        """Verifies log_code_metrics creates code_metrics list if not exists."""
+        """Verifies log_code_metrics creates code_metrics list when absent.
+
+        Tests the lazy initialization path where a session exists but does not
+        yet have a code_metrics field, ensuring the handler creates the list
+        on first use rather than failing with a KeyError.
+
+        Business context:
+        Sessions created before the code metrics feature was added (or sessions
+        that simply haven't logged any metrics yet) will lack the code_metrics
+        key. The handler must transparently initialize this field to maintain
+        backward compatibility and avoid requiring migration scripts.
+
+        Arrangement:
+        1. Creates an active session explicitly WITHOUT a "code_metrics" key,
+           simulating a legacy or newly-created session.
+        2. Writes a minimal Python file with a single function to provide
+           valid input for the metrics analyzer.
+
+        Action:
+        Calls _handle_log_code_metrics targeting the session that lacks the
+        code_metrics field, triggering the lazy initialization code path.
+
+        Assertion Strategy:
+        Validates correct field initialization by confirming:
+        - The handler returns a successful "result" (no error).
+        - The updated session now contains a "code_metrics" key.
+        - The code_metrics list has exactly 1 entry, proving the field was
+          created and the new metric was appended in a single operation.
+
+        Testing Principle:
+        Validates backward compatibility and defensive coding, ensuring the
+        system handles missing optional fields gracefully via lazy initialization.
+        """
         import os
         import tempfile
 
@@ -2917,7 +3039,39 @@ def func_with_boolops(x, y, z):
     async def test_log_code_metrics_appends_to_existing_list(
         self, server: SessionTrackerServer
     ) -> None:
-        """Verifies log_code_metrics appends to existing code_metrics list."""
+        """Verifies log_code_metrics appends to existing code_metrics list.
+
+        Tests the append path where a session already has prior code_metrics
+        entries, ensuring new metrics are added without overwriting or
+        discarding previously recorded data.
+
+        Business context:
+        During a typical AI coding session, multiple files are modified and
+        metrics are logged incrementally. Each call to log_code_metrics must
+        append to the existing list so that the full history of code changes
+        is preserved for session summaries and quality trend analysis.
+
+        Arrangement:
+        1. Creates an active session with a pre-existing code_metrics list
+           containing one entry ({"existing": "metric"}), simulating a
+           session that has already logged metrics from prior file changes.
+        2. Writes a minimal Python file to provide valid analyzer input.
+
+        Action:
+        Calls _handle_log_code_metrics targeting the session with pre-existing
+        metrics, triggering the append (not overwrite) code path.
+
+        Assertion Strategy:
+        Validates non-destructive append behavior by confirming:
+        - The handler returns a successful "result" (no error).
+        - The session's code_metrics list now has exactly 2 entries.
+        - The first entry is the original {"existing": "metric"}, proving
+          prior data was preserved and the new metric was appended at the end.
+
+        Testing Principle:
+        Validates data integrity and accumulation semantics, ensuring that
+        repeated operations build upon prior state without data loss.
+        """
         import os
         import tempfile
 
@@ -2959,7 +3113,37 @@ def func_with_boolops(x, y, z):
     async def test_docstring_parsing_full_coverage(self, server: SessionTrackerServer) -> None:
         """Verifies documentation score calculation with full docstring.
 
-        Tests the branch where docstring exists and contains all sections.
+        Tests the documentation quality scoring branch where a function has a
+        comprehensive docstring containing all recognized sections (summary,
+        extended description, Args, Returns, Raises, Examples), ensuring the
+        scorer awards maximum or near-maximum points for complete documentation.
+
+        Business context:
+        The doc quality metric incentivizes developers to write thorough
+        documentation. This test ensures that well-documented functions are
+        correctly recognized and scored highly, validating the positive
+        feedback loop that the scoring system creates.
+
+        Arrangement:
+        1. Creates an active session to associate the metrics with.
+        2. Writes a temporary Python file containing a function with a
+           comprehensive docstring that includes: summary line, extended
+           description exceeding 50 characters, Args, Returns, Raises,
+           and Examples sections — triggering all doc score branches.
+
+        Action:
+        Calls _handle_log_code_metrics on the file with the fully-documented
+        function, exercising every branch of the docstring quality parser.
+
+        Assertion Strategy:
+        Validates accurate documentation scoring by confirming:
+        - The handler returns a successful "result" (no error).
+        - average_doc_quality is at least 50 (on a 0-100 scale), reflecting
+          that all documentation sections were detected and scored.
+
+        Testing Principle:
+        Validates scoring algorithm completeness, ensuring that exemplary
+        documentation receives proportionally high quality scores.
         """
         import os
         import tempfile
