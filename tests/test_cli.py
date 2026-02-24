@@ -2827,7 +2827,9 @@ class TestGenerateMcpServerConfig:
     """Tests for _generate_mcp_server_config helper."""
 
     def test_generate_config_with_env_example(self) -> None:
-        """Verifies _generate_mcp_server_config includes environment variable examples when requested.
+        """Verifies _generate_mcp_server_config includes env var examples.
+
+        Confirms environment variable examples are present when requested.
 
         Tests that with_env_example=True adds the _env_example key containing
         environment variable documentation for user reference.
@@ -2863,7 +2865,9 @@ class TestGenerateMcpServerConfig:
         assert "AI_MAX_SESSION_DURATION_HOURS" in result["_env_example"]
 
     def test_generate_config_without_env_example(self) -> None:
-        """Verifies _generate_mcp_server_config excludes environment variable examples when not requested.
+        """Verifies _generate_mcp_server_config excludes env var examples.
+
+        Confirms environment variable examples are omitted when not requested.
 
         Tests that with_env_example=False produces a clean config without
         the _env_example key, suitable for production deployment.

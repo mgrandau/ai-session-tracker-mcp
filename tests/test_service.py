@@ -1969,7 +1969,9 @@ class TestWindowsServiceManagerErrors:
 
     @patch("subprocess.run")
     def test_status_installed_and_running(self, mock_run: MagicMock) -> None:
-        """Verifies status() reports installed and running when schtasks output confirms active task.
+        """Verifies status() reports installed and running for active task.
+
+        Confirms schtasks output indicating an active task is detected.
 
         Tests the happy-path status detection where schtasks query returns
         a zero exit code and the stdout contains indicators of a running task.
