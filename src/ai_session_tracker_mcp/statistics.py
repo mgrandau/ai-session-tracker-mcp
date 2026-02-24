@@ -600,7 +600,38 @@ class StatisticsEngine:
         return friction_indicators
 
     def _detect_gap_trend(self, gaps: list[dict[str, Any]]) -> str | None:
-        """Detect if gaps are trending upward over time."""
+        """Detect if inter-session gaps are trending upward over time.
+
+        Splits the gap list into chronological halves and compares their
+        average durations. If the second half's average exceeds the first
+        half's average by more than FRICTION_TREND_MULTIPLIER (1.5×), this
+        signals a worsening trend—users are taking progressively longer
+        breaks between sessions, which may indicate declining adoption.
+
+        Business context: An upward gap trend is a leading indicator of
+        tool abandonment. Catching this early allows teams to intervene
+        with training or UX improvements before full disengagement.
+
+        Args:
+            gaps: Chronologically ordered list of gap records, each
+                containing at minimum a 'duration_minutes' float key.
+                Requires at least 3 entries for meaningful trend analysis;
+                returns None otherwise.
+
+        Returns:
+            A friction indicator message string if the second-half average
+            gap exceeds 1.5× the first-half average, or None if no
+            upward trend is detected or insufficient data.
+
+        Example:
+            >>> engine._detect_gap_trend([
+            ...     {"duration_minutes": 10},
+            ...     {"duration_minutes": 12},
+            ...     {"duration_minutes": 30},
+            ...     {"duration_minutes": 40},
+            ... ])
+            'Gaps increasing over time - possible adoption decline'
+        """
         if len(gaps) < 3:
             return None
         first_half = gaps[: len(gaps) // 2]

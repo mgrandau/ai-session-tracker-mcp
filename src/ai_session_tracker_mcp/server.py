@@ -469,6 +469,17 @@ class SessionTrackerServer:
 
         Returns:
             JSON-RPC success response with session_id, or error response.
+
+        Raises:
+            No exceptions are raised directly.
+
+        Example:
+            >>> response = await server._handle_start_session(
+            ...     {"session_name": "refactor", "task_type": "coding", "model_name": "gpt-4"},
+            ...     msg_id=1,
+            ... )
+            >>> response["result"]["content"][0]["text"]
+            '...Session Started...'
         """
         result = self.session_service.start_session(
             name=args.get("session_name", ""),
@@ -523,6 +534,25 @@ Estimate: {data.get("initial_estimate_minutes", 0):.0f}min ({data.get("estimate_
 
         Returns:
             JSON-RPC success response with rating visualization, or error response.
+
+        Raises:
+            KeyError: If required parameters (session_id, prompt,
+                response_summary, effectiveness_rating) are missing from args.
+            Exception: Any unexpected error during interaction logging is caught
+                and returned as a JSON-RPC error response.
+
+        Example:
+            >>> response = await server._handle_log_interaction(
+            ...     {
+            ...         "session_id": "abc123",
+            ...         "prompt": "Refactor module",
+            ...         "response_summary": "Extracted helper function",
+            ...         "effectiveness_rating": 4,
+            ...     },
+            ...     msg_id=2,
+            ... )
+            >>> "Logged" in response["result"]["content"][0]["text"]
+            True
         """
         try:
             result = self.session_service.log_interaction(
@@ -569,6 +599,20 @@ Session: {total} interactions, avg {avg_eff:.1f}/5
 
         Returns:
             JSON-RPC success response with session summary, or error response.
+
+        Raises:
+            KeyError: If required parameters (session_id, outcome) are missing
+                from args.
+            Exception: Any unexpected error during session ending is caught and
+                returned as a JSON-RPC error response.
+
+        Example:
+            >>> response = await server._handle_end_session(
+            ...     {"session_id": "abc123", "outcome": "completed"},
+            ...     msg_id=3,
+            ... )
+            >>> "Session Ended" in response["result"]["content"][0]["text"]
+            True
         """
         try:
             result = self.session_service.end_session(
@@ -615,6 +659,25 @@ Metrics: {interactions} interactions, {avg_eff:.1f}/5 avg, {issues_count} issues
 
         Returns:
             JSON-RPC success response with issue confirmation, or error response.
+
+        Raises:
+            KeyError: If required parameters (session_id, issue_type,
+                description, severity) are missing from args.
+            Exception: Any unexpected error during issue flagging is caught and
+                returned as a JSON-RPC error response.
+
+        Example:
+            >>> response = await server._handle_flag_issue(
+            ...     {
+            ...         "session_id": "abc123",
+            ...         "issue_type": "hallucination",
+            ...         "description": "Generated non-existent API",
+            ...         "severity": "high",
+            ...     },
+            ...     msg_id=4,
+            ... )
+            >>> "Issue Flagged" in response["result"]["content"][0]["text"]
+            True
         """
         try:
             result = self.session_service.flag_issue(

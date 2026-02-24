@@ -56,7 +56,27 @@ class ServiceResult:
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
+        """Convert this ServiceResult to a JSON-serializable dictionary.
+
+        Produces a minimal dict suitable for MCP protocol responses and CLI
+        JSON output. Fields with None/empty values (data, error) are omitted
+        to keep payloads compact.
+
+        Args:
+            No arguments (self only).
+
+        Returns:
+            Dict with keys 'success' (bool) and 'message' (str), plus
+            optional 'data' (dict) and 'error' (str) when present.
+
+        Raises:
+            No exceptions are raised directly.
+
+        Example:
+            >>> result = ServiceResult(success=True, message="Done", data={"id": "abc"})
+            >>> result.to_dict()
+            {'success': True, 'message': 'Done', 'data': {'id': 'abc'}}
+        """
         result: dict[str, Any] = {
             "success": self.success,
             "message": self.message,
@@ -101,14 +121,37 @@ class SessionService:
         storage: StorageManager | None = None,
         stats_engine: StatisticsEngine | None = None,
     ) -> None:
-        """
-        Initialize the session service.
+        """Initialize the session service with storage and analytics dependencies.
+
+        Creates a ready-to-use service instance. Both dependencies are optional
+        to support easy testing (inject mocks) and simple bootstrapping (use
+        defaults for production). When omitted, default instances are created
+        that read/write to the standard JSON file paths defined in Config.
+
+        This provides the single entry point for all session tracking logic,
+        ensuring consistent state management regardless of whether calls
+        originate from MCP handlers or CLI commands.
 
         Args:
-            storage: Optional StorageManager for persistence. Creates
-                new instance with defaults if not provided.
-            stats_engine: Optional StatisticsEngine for metrics. Creates
-                new instance with defaults if not provided.
+            storage: StorageManager handling JSON persistence for sessions,
+                interactions, and issues. Defaults to a new StorageManager()
+                using Config paths. Pass a custom instance for testing or
+                alternative storage backends.
+            stats_engine: StatisticsEngine for computing ROI, duration, and
+                effectiveness metrics. Defaults to a new StatisticsEngine().
+                Pass a custom instance to override calculation behavior.
+
+        Returns:
+            None (constructor).
+
+        Raises:
+            No exceptions are raised directly. StorageManager and
+            StatisticsEngine constructors may raise if underlying file
+            system access or configuration is invalid.
+
+        Example:
+            >>> service = SessionService()  # production defaults
+            >>> service = SessionService(storage=mock_storage)  # testing
         """
         self.storage = storage or StorageManager()
         self.stats_engine = stats_engine or StatisticsEngine()
@@ -118,7 +161,9 @@ class SessionService:
         Calculate end_time, capping at max duration if exceeded.
 
         Prevents overnight sessions from skewing metrics by limiting
-        the end_time to start_time + max_duration_hours.
+        the end_time to start_time + max_duration_hours. The purpose of this
+        cap is accurate ROI calculations — without it, a developer who
+        forgets to close a Friday session would show 60+ hours of AI time.
 
         Args:
             start_time_iso: Session start time in ISO format.
@@ -127,6 +172,18 @@ class SessionService:
         Returns:
             Tuple of (end_time_iso, notes) where notes includes duration
             info if session exceeded max duration.
+
+        Raises:
+            No exceptions are raised directly. Parsing failures for
+            start_time_iso are caught internally and fall back to the
+            current UTC time.
+
+        Example:
+            >>> end_time, notes = service._calculate_capped_end_time(
+            ...     "2025-01-15T08:00:00+00:00", "new session started"
+            ... )
+            >>> print(notes)
+            '[Auto-closed: new session started]'
         """
         now = datetime.now(UTC)
         max_duration_hours = Config.get_max_session_duration_hours()
@@ -181,6 +238,14 @@ class SessionService:
 
         Returns:
             list[str]: List of session IDs that were auto-closed.
+
+        Raises:
+            No exceptions are raised directly. Storage errors are caught
+            internally and logged; an empty list is returned on failure.
+
+        Example:
+            >>> closed_ids = service._auto_close_active_sessions("foreground")
+            >>> print(f"Auto-closed {len(closed_ids)} session(s)")
         """
         closed_sessions = []
         try:
@@ -243,6 +308,20 @@ class SessionService:
 
         Returns:
             ServiceResult with session_id in data on success.
+
+        Raises:
+            No exceptions are raised directly. All errors are caught and
+            returned as a failed ServiceResult with an error message.
+
+        Example:
+            >>> result = service.start_session(
+            ...     name="Fix login bug",
+            ...     task_type="bug_fix",
+            ...     model_name="claude-opus-4-20250514",
+            ...     human_time_estimate_minutes=30,
+            ...     estimate_source="manual",
+            ... )
+            >>> print(result.data["session_id"])
         """
         try:
             # Validate task_type
@@ -326,7 +405,10 @@ class SessionService:
         """
         Log an AI prompt/response interaction.
 
-        Records the interaction and updates session statistics.
+        Records the interaction and updates session statistics. This provides
+        the data pipeline for effectiveness tracking — each logged interaction
+        contributes to the session's running average, which drives the ROI
+        and quality metrics in observability reports.
 
         Args:
             session_id: Parent session identifier.
@@ -338,6 +420,19 @@ class SessionService:
 
         Returns:
             ServiceResult with interaction stats on success.
+
+        Raises:
+            No exceptions are raised directly. All errors are caught and
+            returned as a failed ServiceResult with an error message.
+
+        Example:
+            >>> result = service.log_interaction(
+            ...     session_id="abc-123",
+            ...     prompt="Refactor the auth module",
+            ...     response_summary="Extracted middleware into separate file",
+            ...     effectiveness_rating=4,
+            ... )
+            >>> print(result.data["avg_effectiveness"])
         """
         try:
             session_data = self.storage.get_session(session_id)
@@ -402,15 +497,31 @@ class SessionService:
         """
         End a tracking session.
 
-        Marks the session as completed with end timestamp and outcome.
+        Marks the session as completed with end timestamp and outcome. The
+        purpose of ending sessions promptly is to ensure accurate duration
+        calculations and prevent auto-close from marking them as 'partial'.
 
         Args:
             session_id: Session identifier to complete.
             outcome: 'success', 'partial', or 'failed'.
             notes: Optional summary notes.
+            final_estimate_minutes: Optional revised time estimate after
+                completing the task, used to improve future estimates.
 
         Returns:
             ServiceResult with session summary on success.
+
+        Raises:
+            No exceptions are raised directly. All errors are caught and
+            returned as a failed ServiceResult with an error message.
+
+        Example:
+            >>> result = service.end_session(
+            ...     session_id="abc-123",
+            ...     outcome="success",
+            ...     notes="Completed ahead of estimate",
+            ... )
+            >>> print(result.data["duration_minutes"])
         """
         try:
             # Validate outcome
@@ -479,7 +590,10 @@ class SessionService:
         """
         Flag a problematic AI interaction.
 
-        Records an issue with type and severity for later analysis.
+        Records an issue with type and severity for later analysis. This
+        provides the feedback loop for identifying systemic AI failure
+        patterns — repeated hallucinations or high-severity errors signal
+        the need to change models, prompts, or workflows.
 
         Args:
             session_id: Parent session identifier.
@@ -489,6 +603,20 @@ class SessionService:
 
         Returns:
             ServiceResult on success.
+
+        Raises:
+            No exceptions are raised directly. All errors are caught and
+            returned as a failed ServiceResult with an error message.
+
+        Example:
+            >>> result = service.flag_issue(
+            ...     session_id="abc-123",
+            ...     issue_type="hallucination",
+            ...     description="Model invented a non-existent API method",
+            ...     severity="high",
+            ... )
+            >>> print(result.message)
+            'Issue flagged: hallucination (high)'
         """
         try:
             # Validate severity
@@ -537,13 +665,39 @@ class SessionService:
             )
 
     def get_active_sessions(self) -> ServiceResult:
-        """
-        Get list of currently active sessions.
+        """Retrieve all currently active (non-completed) tracking sessions.
 
-        Returns sessions that haven't been ended yet.
+        Queries storage for sessions whose status is not 'completed' and
+        returns a summary of each. This is used by the CLI ``status`` command
+        and MCP ``get_active_sessions`` tool to show what's currently being
+        tracked, helping users decide whether to start a new session or
+        resume an existing one.
+
+        The purpose of this view is to prevent duplicate tracking and give
+        developers a quick dashboard of in-progress AI work.
+
+        Each returned session dict contains only the fields needed for
+        display: session_id, session_name, task_type, and start_time.
+        Fields missing from storage default to 'Unknown'.
+
+        Args:
+            No arguments (self only).
 
         Returns:
-            ServiceResult with list of active sessions.
+            ServiceResult where ``data["active_sessions"]`` is a list of dicts,
+            each with keys 'session_id' (str), 'session_name' (str),
+            'task_type' (str), and 'start_time' (str, ISO format). The list
+            is empty when no sessions are active. On storage errors, returns
+            a failure result with the error message.
+
+        Raises:
+            No exceptions are raised directly. Storage errors are caught
+            internally and returned as a failed ServiceResult.
+
+        Example:
+            >>> result = service.get_active_sessions()
+            >>> for s in result.data["active_sessions"]:
+            ...     print(f"{s['session_name']} started at {s['start_time']}")
         """
         try:
             sessions = self.storage.load_sessions()
@@ -581,7 +735,9 @@ class SessionService:
         Generate analytics report.
 
         Returns comprehensive metrics including ROI, effectiveness,
-        and issue summaries.
+        and issue summaries. This provides the primary way teams measure
+        whether AI tooling is saving time — the report quantifies the
+        return on investment for each session and across the full history.
 
         Args:
             session_id: Optional filter to specific session.
@@ -589,6 +745,14 @@ class SessionService:
 
         Returns:
             ServiceResult with report text.
+
+        Raises:
+            No exceptions are raised directly. All errors are caught and
+            returned as a failed ServiceResult with an error message.
+
+        Example:
+            >>> result = service.get_observability(session_id="abc-123")
+            >>> print(result.data["report"])
         """
         try:
             sessions = self.storage.load_sessions()
@@ -625,15 +789,41 @@ class SessionService:
             )
 
     def close_active_sessions_on_shutdown(self) -> int:
-        """
-        Close all active sessions on shutdown.
+        """Close all active sessions during server or CLI shutdown.
 
-        Marks active sessions as completed with outcome 'partial'.
-        End times are capped at start_time + max_duration_hours to prevent
-        overnight sessions from skewing ROI metrics.
+        Iterates every stored session and marks any with status 'active' as
+        'completed' with outcome 'partial', since a graceful ending wasn't
+        recorded. This prevents zombie sessions from accumulating across
+        restarts and ensures ROI metrics reflect actual usage.
+
+        The purpose of this cleanup is to prevent orphaned sessions — without
+        it, restarting the server would leave zombie sessions that skew
+        active-session counts and duration calculations indefinitely.
+
+        End times are capped at ``start_time + max_duration_hours`` (from
+        Config) to prevent overnight or forgotten sessions from inflating
+        duration metrics. If a session's elapsed time exceeds the cap, the
+        end_time is set to the cap boundary and a note is appended.
+
+        All closures are persisted in a single ``save_sessions`` call for
+        atomicity. On any storage error, returns 0 and logs the exception
+        rather than propagating it (shutdown must not raise).
+
+        Args:
+            No arguments (self only).
 
         Returns:
-            int: Number of sessions closed.
+            Number of sessions that were closed (0 if none were active or
+            if an error occurred during processing).
+
+        Raises:
+            No exceptions are raised directly. All errors are caught
+            internally, logged, and 0 is returned to ensure shutdown
+            proceeds safely.
+
+        Example:
+            >>> closed = service.close_active_sessions_on_shutdown()
+            >>> print(f"Cleaned up {closed} session(s)")
         """
         try:
             sessions = self.storage.load_sessions()

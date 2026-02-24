@@ -282,8 +282,21 @@ class Config:
         When a non-None value is returned, StorageManager uses it as the
         storage directory instead of '.ai_sessions'.
 
+        Business context: Teams often need centralized session data for
+        aggregated reporting across developers and projects. This method
+        enables redirecting storage to shared locations (network drives,
+        synced folders) without code changes, supporting both individual
+        and team-wide analytics workflows.
+
+        Args:
+            None: Class method, accesses class variable and env var.
+
         Returns:
             Configured output directory path string, or None if not set.
+
+        Raises:
+            None: Only reads a class variable and an environment variable;
+            no operations that can raise exceptions.
 
         Example:
             >>> # With env var: AI_OUTPUT_DIR=/mnt/share/jsmith

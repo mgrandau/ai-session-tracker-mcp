@@ -321,12 +321,32 @@ def _generate_mcp_server_config(
     """
     Generate server config dict with optional env example.
 
+    Wraps a base server configuration with optional environment variable
+    examples that guide users on available customization options.
+
+    Business context: The generated config is written to mcp.json where
+    VS Code reads it to launch the MCP server. Including env examples
+    as underscore-prefixed keys provides inline documentation without
+    affecting runtime behavior, reducing setup friction for new users.
+
     Args:
         server_config: Base server config with command and args.
         with_env_example: If True, include _env_example showing available vars.
 
     Returns:
-        Complete server config dict.
+        Complete server config dict with env example keys when enabled.
+
+    Raises:
+        No exceptions are raised directly.
+
+    Example:
+        >>> base = {"command": "python", "args": ["-m", "ai_session_tracker_mcp"]}
+        >>> config = _generate_mcp_server_config(base)
+        >>> "_env_example" in config
+        True
+        >>> config = _generate_mcp_server_config(base, with_env_example=False)
+        >>> "_env_example" in config
+        False
     """
     config = dict(server_config)
 
@@ -703,12 +723,32 @@ def _output_result(result: dict[str, Any], json_output: bool = False) -> int:
     """
     Output service result to stdout.
 
+    Formats and prints a SessionService result dictionary in either
+    JSON or human-readable format. Translates the service success/failure
+    status into a CLI exit code for shell integration.
+
+    Business context: All session CLI subcommands (start, log, end, flag,
+    active) funnel through this function for consistent output formatting.
+    JSON mode enables scripting and CI/CD pipeline integration, while
+    human-readable mode provides friendly terminal output with emojis.
+
     Args:
-        result: ServiceResult.to_dict() output.
+        result: ServiceResult.to_dict() output containing 'success',
+            'message', optional 'data' dict, and optional 'error' string.
         json_output: If True, output as JSON. Otherwise human-readable.
 
     Returns:
         int: Exit code (0 for success, 1 for failure).
+
+    Raises:
+        No exceptions are raised directly.
+
+    Example:
+        >>> result = {"success": True, "message": "Session started", "data": {"session_id": "abc"}}
+        >>> _output_result(result, json_output=False)
+        0
+        >>> _output_result(result, json_output=True)
+        0
     """
     if json_output:
         print(json.dumps(result, indent=2))
@@ -794,7 +834,14 @@ def run_session_log(
     """
     Log an interaction via CLI.
 
-    Records a prompt/response exchange with effectiveness rating.
+    Records a prompt/response exchange with effectiveness rating
+    against an active session. Each interaction captures what was asked,
+    what was received, and how useful the AI response was.
+
+    Business context: Interaction logging is the core data collection
+    mechanism for ROI calculations. Each logged interaction contributes
+    to effectiveness metrics and helps identify patterns in AI-assisted
+    development productivity across sessions.
 
     Args:
         session_id: Parent session identifier.
@@ -807,6 +854,15 @@ def run_session_log(
 
     Returns:
         int: Exit code (0 for success, 1 for failure).
+
+    Raises:
+        No exceptions are raised directly. Errors are returned in the
+        result dict with success=False.
+
+    Example:
+        >>> # ai-session-tracker log --session-id abc123 --prompt "Add tests" \
+        >>> #   --summary "Generated 5 unit tests" --rating 4
+        >>> run_session_log("abc123", "Add tests", "Generated 5 unit tests", 4)
     """
     from .session_service import SessionService
 
@@ -833,16 +889,34 @@ def run_session_end(
     """
     End a tracking session via CLI.
 
-    Marks the session as completed with the specified outcome.
+    Marks the session as completed with the specified outcome and
+    calculates final duration and ROI metrics. Optionally accepts
+    a revised time estimate based on actual work completed.
+
+    Business context: Ending a session triggers ROI calculation by
+    comparing AI-assisted time against the human baseline estimate.
+    Accurate outcomes feed into aggregate statistics that justify
+    AI tooling investment to stakeholders and management.
 
     Args:
         session_id: Session identifier to complete.
         outcome: 'success', 'partial', or 'failed'.
         notes: Optional summary notes.
+        final_estimate_minutes: Revised human estimate based on actual
+            code changes (insertions + deletions). Overrides original.
         json_output: If True, output JSON.
 
     Returns:
         int: Exit code (0 for success, 1 for failure).
+
+    Raises:
+        No exceptions are raised directly. Errors are returned in the
+        result dict with success=False.
+
+    Example:
+        >>> # ai-session-tracker end --session-id abc123 --outcome success \
+        >>> #   --notes "Completed feature" --final-estimate 45
+        >>> run_session_end("abc123", "success", notes="Completed feature")
     """
     from .session_service import SessionService
 
@@ -867,17 +941,34 @@ def run_session_flag(
     """
     Flag an issue via CLI.
 
-    Records a problematic AI interaction for analysis.
+    Records a problematic AI interaction for analysis. Flagged issues
+    are tracked separately from normal interactions and appear in
+    quality reports and dashboard issue summaries.
+
+    Business context: Issue flagging captures failure modes and quality
+    problems (hallucinations, incorrect output, security issues) that
+    inform model selection decisions and prompt engineering improvements.
+    Severity levels help prioritize which AI behaviors need attention.
 
     Args:
         session_id: Parent session identifier.
-        issue_type: Issue category.
-        description: Detailed description.
+        issue_type: Issue category (e.g., 'hallucination',
+            'incorrect_output', 'security_concern').
+        description: Detailed description of what went wrong.
         severity: 'low', 'medium', 'high', or 'critical'.
         json_output: If True, output JSON.
 
     Returns:
         int: Exit code (0 for success, 1 for failure).
+
+    Raises:
+        No exceptions are raised directly. Errors are returned in the
+        result dict with success=False.
+
+    Example:
+        >>> # ai-session-tracker flag --session-id abc123 --type hallucination \
+        >>> #   --desc "Generated non-existent API call" --severity high
+        >>> run_session_flag("abc123", "hallucination", "Bad API call", "high")
     """
     from .session_service import SessionService
 
@@ -895,13 +986,27 @@ def run_session_active(*, json_output: bool = False) -> int:
     """
     List active sessions via CLI.
 
-    Returns sessions that haven't been ended yet.
+    Returns sessions that haven't been ended yet, displaying session
+    name, ID, task type, and start time for each active session.
+
+    Business context: Active session listing helps developers and scripts
+    discover in-progress sessions for logging interactions or ending them.
+    Essential for CI/CD pipelines that need to find and close sessions
+    programmatically, and for developers resuming work across terminals.
 
     Args:
         json_output: If True, output JSON.
 
     Returns:
         int: Exit code (0 for success, 1 for failure).
+
+    Raises:
+        No exceptions are raised directly. Errors are returned in the
+        result dict with success=False.
+
+    Example:
+        >>> # ai-session-tracker active --json
+        >>> run_session_active(json_output=True)
     """
     from .session_service import SessionService
 
