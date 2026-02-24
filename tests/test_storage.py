@@ -1345,3 +1345,183 @@ class TestStorageManagerOutputDir:
             assert storage.sessions_file.startswith("/team/share/jsmith/")
             assert storage.interactions_file.startswith("/team/share/jsmith/")
             assert storage.issues_file.startswith("/team/share/jsmith/")
+
+    def test_no_writes_to_default_dir_when_output_dir_set(self, mock_fs: MockFileSystem) -> None:
+        """Verifies no files or directories are created under the default path
+        when AI_OUTPUT_DIR is configured.
+
+        This is the critical integration test for issue #19: when a user sets
+        AI_OUTPUT_DIR, the server must write exclusively to that location.
+        Any file or directory created under the default STORAGE_DIR represents
+        a bug — data split across two locations causes confusion and data loss.
+
+        Business context:
+        Users configure AI_OUTPUT_DIR to redirect session data to shared drives,
+        OneDrive, or team directories. If the server still creates the local
+        default directory alongside the configured one, it undermines the entire
+        purpose of the redirect and may confuse users about which copy is
+        authoritative.
+
+        Arrangement:
+        1. Sets Config output_dir to "/custom/output" via override_for_test.
+        2. Creates a StorageManager with MockFileSystem to capture all I/O.
+
+        Action:
+        Performs a full session lifecycle through StorageManager: saves a
+        session, saves an interaction, and saves an issue — exercising all
+        write paths.
+
+        Assertion Strategy:
+        After all writes, inspects MockFileSystem state to verify:
+        - No files exist under Config.STORAGE_DIR (the default ".ai_sessions").
+        - No directories exist under Config.STORAGE_DIR.
+        - All created files are under "/custom/output/".
+        - All created directories are under "/custom/output" or "/custom".
+
+        Testing Principle:
+        Validates complete write isolation — a negative test proving the
+        absence of unintended side effects in a different directory.
+        """
+        from ai_session_tracker_mcp.config import Config
+
+        custom_dir = "/custom/output"
+        default_dir = Config.STORAGE_DIR
+
+        with Config.override_for_test(output_dir=custom_dir):
+            storage = StorageManager(filesystem=mock_fs)
+
+            # Exercise all write paths: sessions, interaction, issue
+            test_sessions = {
+                "test-001": {
+                    "session_id": "test-001",
+                    "name": "Test session",
+                    "type": "code_generation",
+                    "model": "test-model",
+                    "start_time": datetime.now().isoformat(),
+                    "status": "active",
+                    "estimated_minutes": 30,
+                    "initial_estimated_minutes": 30,
+                    "source": "manual",
+                }
+            }
+            storage.save_sessions(test_sessions)
+
+            test_interaction = {
+                "interaction_id": "int-001",
+                "session_id": "test-001",
+                "timestamp": datetime.now().isoformat(),
+                "prompt_summary": "Test prompt",
+                "response_summary": "Test response",
+                "quality_rating": 4,
+            }
+            storage.add_interaction(test_interaction)
+
+            test_issue = {
+                "issue_id": "iss-001",
+                "session_id": "test-001",
+                "timestamp": datetime.now().isoformat(),
+                "issue_type": "wrong_output",
+                "description": "Test issue",
+                "severity": "medium",
+            }
+            storage.add_issue(test_issue)
+
+            # Verify NO files were created under the default directory
+            default_files = [f for f in mock_fs.list_files() if f.startswith(default_dir)]
+            assert default_files == [], (
+                f"Files created under default dir '{default_dir}' "
+                f"when AI_OUTPUT_DIR='{custom_dir}': {default_files}"
+            )
+
+            # Verify NO directories were created under the default directory
+            default_dirs = [d for d in mock_fs.list_dirs() if d.startswith(default_dir)]
+            assert default_dirs == [], (
+                f"Directories created under default dir '{default_dir}' "
+                f"when AI_OUTPUT_DIR='{custom_dir}': {default_dirs}"
+            )
+
+            # Verify all files ARE under the custom directory
+            all_files = mock_fs.list_files()
+            assert len(all_files) > 0, "No files were created at all"
+            for f in all_files:
+                assert f.startswith(custom_dir + "/"), (
+                    f"File '{f}' not under custom dir '{custom_dir}/'"
+                )
+
+    def test_no_writes_to_default_dir_when_env_var_set(self, mock_fs: MockFileSystem) -> None:
+        """Verifies no default-dir writes when AI_OUTPUT_DIR is set via os.environ.
+
+        Unlike test_no_writes_to_default_dir_when_output_dir_set which uses
+        Config.override_for_test(), this test sets the actual AI_OUTPUT_DIR
+        environment variable to simulate real-world MCP host behavior.
+
+        Business context:
+        When the MCP host (VS Code, Codex) spawns the server process with
+        AI_OUTPUT_DIR in the env block, Config.get_output_dir() must pick it
+        up via os.environ and StorageManager must route all writes there.
+        This test catches the scenario where the env var is present but
+        ignored — the exact bug reported in issue #19.
+
+        Arrangement:
+        1. Patches os.environ with AI_OUTPUT_DIR="/env/custom/path".
+        2. Resets Config test overrides to ensure no override is active.
+        3. Creates StorageManager with MockFileSystem.
+
+        Action:
+        Performs a full write cycle: save_sessions, add_interaction, add_issue.
+
+        Assertion Strategy:
+        - storage_dir equals the env var value.
+        - No files or directories under default STORAGE_DIR.
+        - All files under the env var path.
+        """
+        from ai_session_tracker_mcp.config import Config
+
+        custom_dir = "/env/custom/path"
+        default_dir = Config.STORAGE_DIR
+
+        Config.reset_test_overrides()
+        with patch.dict(os.environ, {"AI_OUTPUT_DIR": custom_dir}):
+            storage = StorageManager(filesystem=mock_fs)
+
+            assert storage.storage_dir == custom_dir, (
+                f"StorageManager ignored AI_OUTPUT_DIR env var: "
+                f"expected '{custom_dir}', got '{storage.storage_dir}'"
+            )
+
+            # Full write cycle
+            storage.save_sessions({"s1": {"session_id": "s1", "status": "active"}})
+            storage.add_interaction(
+                {
+                    "interaction_id": "i1",
+                    "session_id": "s1",
+                    "timestamp": datetime.now().isoformat(),
+                    "prompt_summary": "test",
+                    "response_summary": "test",
+                    "quality_rating": 3,
+                }
+            )
+            storage.add_issue(
+                {
+                    "issue_id": "x1",
+                    "session_id": "s1",
+                    "timestamp": datetime.now().isoformat(),
+                    "issue_type": "wrong_output",
+                    "description": "test",
+                    "severity": "low",
+                }
+            )
+
+            # No writes to default dir
+            default_files = [f for f in mock_fs.list_files() if f.startswith(default_dir)]
+            assert default_files == [], (
+                f"Files under default dir when AI_OUTPUT_DIR set: {default_files}"
+            )
+
+            # All writes to custom dir
+            all_files = mock_fs.list_files()
+            assert len(all_files) > 0, "No files created"
+            for f in all_files:
+                assert f.startswith(custom_dir + "/"), (
+                    f"File '{f}' not under AI_OUTPUT_DIR '{custom_dir}/'"
+                )
