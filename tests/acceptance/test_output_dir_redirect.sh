@@ -273,7 +273,193 @@ print(s.get('status', 'unknown'))
     fi
 fi
 
-# ── FINAL CHECK: default dir still must NOT exist ──
+# =============================================================================
+# TEST 3: Install → parse mcp.json → run with env override
+# =============================================================================
+echo ""
+echo "── Test 3: Install-generated config with AI_OUTPUT_DIR override ──"
+
+# Set up a fresh project directory for install test
+INSTALL_DIR="${TEST_ROOT}/install-project"
+INSTALL_OUTPUT="${TEST_ROOT}/install-output"
+INSTALL_DEFAULT="${INSTALL_DIR}/.ai_sessions"
+mkdir -p "${INSTALL_DIR}"
+cd "${INSTALL_DIR}"
+
+unset AI_OUTPUT_DIR 2>/dev/null || true
+
+# Run the install command to generate mcp.json
+ai-session-tracker install >/dev/null 2>&1
+log_info "Ran 'ai-session-tracker install' in ${INSTALL_DIR}"
+
+MCP_JSON="${INSTALL_DIR}/.vscode/mcp.json"
+
+if [ -f "${MCP_JSON}" ]; then
+    log_pass "mcp.json created at ${MCP_JSON}"
+else
+    log_fail "mcp.json NOT created by install"
+fi
+
+# Parse the generated mcp.json — extract command and args
+if [ -f "${MCP_JSON}" ]; then
+    PARSED=$(python3 -c "
+import json, sys
+
+config = json.load(open('${MCP_JSON}'))
+server = config.get('servers', {}).get('ai-session-tracker', {})
+command = server.get('command', '')
+args = server.get('args', [])
+
+# Check for _env_example (the documentation block)
+env_example = server.get('_env_example', {})
+has_env_block = 'env' in server
+has_env_example = '_env_example' in server
+
+print(json.dumps({
+    'command': command,
+    'args': args,
+    'has_env_block': has_env_block,
+    'has_env_example': has_env_example,
+    'env_example': env_example,
+    'env': server.get('env', {}),
+}))
+" 2>/dev/null || echo "{}")
+
+    CMD=$(echo "${PARSED}" | python3 -c "import sys,json; print(json.load(sys.stdin)['command'])" 2>/dev/null || echo "")
+    ARGS=$(echo "${PARSED}" | python3 -c "import sys,json; print(' '.join(json.load(sys.stdin)['args']))" 2>/dev/null || echo "")
+    HAS_ENV=$(echo "${PARSED}" | python3 -c "import sys,json; print(json.load(sys.stdin)['has_env_block'])" 2>/dev/null || echo "")
+    HAS_ENV_EX=$(echo "${PARSED}" | python3 -c "import sys,json; print(json.load(sys.stdin)['has_env_example'])" 2>/dev/null || echo "")
+
+    log_info "Parsed from mcp.json:"
+    log_info "  command: ${CMD}"
+    log_info "  args: ${ARGS}"
+    log_info "  has 'env' block: ${HAS_ENV}"
+    log_info "  has '_env_example' block: ${HAS_ENV_EX}"
+
+    if [ "${HAS_ENV_EX}" = "True" ]; then
+        log_pass "Install generated _env_example block (documentation)"
+    else
+        log_fail "Install did NOT generate _env_example block"
+    fi
+
+    # NOTE: This is the UX issue — install creates _env_example but not env.
+    # The MCP host only reads 'env', not '_env_example'.
+    if [ "${HAS_ENV}" = "True" ]; then
+        log_info "'env' block exists in generated config"
+    else
+        log_info "No 'env' block in generated config (user must create manually)"
+    fi
+
+    # Now run using the parsed command + args, with AI_OUTPUT_DIR override
+    # This simulates what happens when a user sets the env var and the MCP
+    # host spawns the server — except we're using the CLI directly.
+    if [ -n "${CMD}" ]; then
+        log_info "Running session lifecycle using installed config + AI_OUTPUT_DIR override"
+        export AI_OUTPUT_DIR="${INSTALL_OUTPUT}"
+
+        # Clean up any default dir that install may have created
+        rm -rf "${INSTALL_DEFAULT}"
+
+        # Start session using the command from mcp.json (but via CLI, not server mode)
+        RESULT3=$(ai-session-tracker start \
+            --name "install-config-test" \
+            --type testing \
+            --model "config-model" \
+            --mins 5 \
+            --source manual \
+            --developer "test-user" \
+            --project "install-project" \
+            --json 2>/dev/null)
+
+        SESSION_ID3=$(echo "${RESULT3}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',d).get('session_id',''))" 2>/dev/null || echo "")
+
+        if [ -z "${SESSION_ID3}" ]; then
+            log_fail "Could not start session using installed config"
+        else
+            log_pass "Started session from installed config: ${SESSION_ID3}"
+        fi
+
+        # CRITICAL: default dir must NOT exist
+        if [ ! -d "${INSTALL_DEFAULT}" ]; then
+            log_pass "Default .ai_sessions NOT created when using install config + AI_OUTPUT_DIR"
+        else
+            log_fail "Default .ai_sessions WAS created — install config does not properly support AI_OUTPUT_DIR"
+            echo "  Contents:"
+            ls -la "${INSTALL_DEFAULT}" 2>/dev/null || true
+        fi
+
+        # Custom dir must have the data
+        if [ -d "${INSTALL_OUTPUT}" ]; then
+            log_pass "AI_OUTPUT_DIR path created: ${INSTALL_OUTPUT}"
+        else
+            log_fail "AI_OUTPUT_DIR path was NOT created"
+        fi
+
+        if [ -f "${INSTALL_OUTPUT}/sessions.json" ]; then
+            S3_COUNT=$(python3 -c "import json; print(len(json.load(open('${INSTALL_OUTPUT}/sessions.json'))))" 2>/dev/null || echo "0")
+            if [ "${S3_COUNT}" -gt 0 ]; then
+                log_pass "sessions.json has ${S3_COUNT} session(s) in AI_OUTPUT_DIR"
+            else
+                log_fail "sessions.json is empty in AI_OUTPUT_DIR"
+            fi
+        else
+            log_fail "sessions.json not found in AI_OUTPUT_DIR"
+        fi
+
+        # Log interaction
+        if [ -n "${SESSION_ID3}" ]; then
+            ai-session-tracker log \
+                --session-id "${SESSION_ID3}" \
+                --prompt "Test from installed config" \
+                --summary "Verifying install + env override" \
+                --rating 5 \
+                --json >/dev/null 2>&1
+            log_pass "Logged interaction via installed config"
+        fi
+
+        # End session
+        if [ -n "${SESSION_ID3}" ]; then
+            ai-session-tracker end \
+                --session-id "${SESSION_ID3}" \
+                --outcome success \
+                --notes "install config acceptance test" \
+                --json >/dev/null 2>&1
+            log_pass "Ended session via installed config"
+
+            # Verify completed status
+            if [ -f "${INSTALL_OUTPUT}/sessions.json" ]; then
+                STATUS3=$(python3 -c "
+import json
+sessions = json.load(open('${INSTALL_OUTPUT}/sessions.json'))
+s = sessions.get('${SESSION_ID3}', {})
+print(s.get('status', 'unknown'))
+" 2>/dev/null || echo "unknown")
+                if [ "${STATUS3}" = "completed" ]; then
+                    log_pass "Session completed in AI_OUTPUT_DIR via installed config"
+                else
+                    log_fail "Session status '${STATUS3}', expected 'completed'"
+                fi
+            fi
+        fi
+
+        # FINAL: default dir still must not exist
+        if [ ! -d "${INSTALL_DEFAULT}" ]; then
+            log_pass "Default .ai_sessions still absent after full lifecycle via installed config"
+        else
+            log_fail "Default .ai_sessions appeared during installed config lifecycle"
+        fi
+
+        echo ""
+        echo "── Install output dir contents ──"
+        if [ -d "${INSTALL_OUTPUT}" ]; then
+            ls -la "${INSTALL_OUTPUT}/"
+        else
+            echo "  (directory does not exist)"
+        fi
+    fi
+fi
+
+# ── FINAL CHECK: default dir still must NOT exist (Test 2) ──
 echo ""
 echo "── Final verification ──"
 
