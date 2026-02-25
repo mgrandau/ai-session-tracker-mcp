@@ -40,7 +40,7 @@ There are two ways to configure it, with different scopes:
 }
 ```
 
-Each repo can have a different destination. The `install` command scaffolds an `_env_example` block in the generated `mcp.json` as a reminder — rename it to `env` and fill in the path to activate it.
+Each repo can have a different destination. The `install` command scaffolds an `env` block in the generated `mcp.json` with safe empty defaults — edit `AI_OUTPUT_DIR` to set your output path.
 
 **System-wide via shell environment** — set it once and every project inherits it automatically with no per-project config needed.
 

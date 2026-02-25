@@ -2827,17 +2827,18 @@ class TestGenerateMcpServerConfig:
     """Tests for _generate_mcp_server_config helper."""
 
     def test_generate_config_with_env_example(self) -> None:
-        """Verifies _generate_mcp_server_config includes env var examples.
+        """Verifies _generate_mcp_server_config includes env block.
 
-        Confirms environment variable examples are present when requested.
+        Confirms environment variable block is present when requested.
 
-        Tests that with_env_example=True adds the _env_example key containing
-        environment variable documentation for user reference.
+        Tests that with_env_example=True adds the 'env' key containing
+        environment variables that the MCP host will inject into the
+        spawned server process.
 
         Business context:
-        Environment variables control runtime behavior (e.g., max session duration).
-        Including examples in the generated config helps users discover and configure
-        these settings without consulting external documentation.
+        Environment variables control runtime behavior (e.g., max session duration,
+        output directory). The env block must use the key 'env' (not '_env_example')
+        because MCP hosts only inject variables from the 'env' key. See Issue #19.
 
         Arrangement:
         1. Create a basic server_config dict with command and args.
@@ -2848,11 +2849,12 @@ class TestGenerateMcpServerConfig:
         Assertion Strategy:
         Validates config generation by confirming:
         - Command and args are preserved in the output.
-        - '_env_example' key is present in the result.
-        - Known env var 'AI_MAX_SESSION_DURATION_HOURS' appears in the example.
+        - 'env' key is present in the result.
+        - Known env vars appear in the env block.
+        - No '_env_example' key exists (removed in #19 fix).
 
         Testing Principle:
-        Validates configuration enrichment for developer experience.
+        Validates configuration enrichment for MCP host compatibility.
         """
         from ai_session_tracker_mcp.cli import _generate_mcp_server_config
 
@@ -2861,21 +2863,23 @@ class TestGenerateMcpServerConfig:
 
         assert result["command"] == "/usr/bin/server"
         assert result["args"] == ["run"]
-        assert "_env_example" in result
-        assert "AI_MAX_SESSION_DURATION_HOURS" in result["_env_example"]
+        assert "env" in result
+        assert "AI_MAX_SESSION_DURATION_HOURS" in result["env"]
+        assert "AI_OUTPUT_DIR" in result["env"]
+        assert "_env_example" not in result
 
     def test_generate_config_without_env_example(self) -> None:
-        """Verifies _generate_mcp_server_config excludes env var examples.
+        """Verifies _generate_mcp_server_config excludes env block.
 
-        Confirms environment variable examples are omitted when not requested.
+        Confirms environment variable block is omitted when not requested.
 
         Tests that with_env_example=False produces a clean config without
-        the _env_example key, suitable for production deployment.
+        the env key, suitable for minimal deployment.
 
         Business context:
-        Production configs should be minimal without documentation artifacts.
-        The env example is useful during setup but clutters production configs
-        and may confuse automated config parsers.
+        Some deployment contexts want a minimal config without default
+        env vars. The env block is useful during setup but optional
+        for users who configure env vars at the system level.
 
         Arrangement:
         1. Create a basic server_config dict with command and args.
@@ -2886,7 +2890,7 @@ class TestGenerateMcpServerConfig:
         Assertion Strategy:
         Validates minimal config by confirming:
         - Command and args are preserved in the output.
-        - '_env_example' key is absent from the result.
+        - 'env' key is absent from the result.
 
         Testing Principle:
         Validates conditional config generation for different deployment contexts.
@@ -2898,7 +2902,7 @@ class TestGenerateMcpServerConfig:
 
         assert result["command"] == "/usr/bin/server"
         assert result["args"] == ["run"]
-        assert "_env_example" not in result
+        assert "env" not in result
 
 
 class TestGlobalInstallPlatforms:

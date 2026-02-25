@@ -1525,3 +1525,47 @@ class TestStorageManagerOutputDir:
                 assert f.startswith(custom_dir + "/"), (
                     f"File '{f}' not under AI_OUTPUT_DIR '{custom_dir}/'"
                 )
+
+    def test_warns_when_env_var_is_empty_string(self, mock_fs: MockFileSystem) -> None:
+        """Verifies a warning is logged when AI_OUTPUT_DIR is set but empty.
+
+        An empty string env var is a common misconfiguration — the user set
+        the variable but forgot to fill in the path. The StorageManager should
+        fall back to the default directory and log a warning so the issue is
+        observable in logs.
+
+        Business context:
+        When deploying to 8-10 developers, misconfigured env vars are
+        inevitable. A clear warning in the logs makes this diagnosable
+        without requiring a debugger or code inspection. See Issue #19.
+
+        Arrangement:
+        1. Resets Config test overrides.
+        2. Patches os.environ with AI_OUTPUT_DIR="".
+
+        Action:
+        Creates a StorageManager with MockFileSystem.
+
+        Assertion Strategy:
+        - storage_dir falls back to Config.STORAGE_DIR (default).
+        - A warning is logged mentioning the empty env var.
+        """
+        from ai_session_tracker_mcp.config import Config
+
+        Config.reset_test_overrides()
+        with (
+            patch.dict(os.environ, {"AI_OUTPUT_DIR": ""}),
+            patch("ai_session_tracker_mcp.storage.logger") as mock_logger,
+        ):
+            storage = StorageManager(filesystem=mock_fs)
+
+            assert storage.storage_dir == Config.STORAGE_DIR, (
+                f"Expected default '{Config.STORAGE_DIR}', got '{storage.storage_dir}'"
+            )
+
+            # Verify warning was logged
+            mock_logger.warning.assert_called_once()
+            warning_msg = mock_logger.warning.call_args[0][0]
+            assert "empty" in warning_msg.lower(), (
+                f"Warning should mention 'empty', got: {warning_msg}"
+            )

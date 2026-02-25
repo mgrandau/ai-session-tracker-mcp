@@ -319,22 +319,24 @@ def _generate_mcp_server_config(
     with_env_example: bool = True,
 ) -> dict[str, Any]:
     """
-    Generate server config dict with optional env example.
+    Generate server config dict with environment variable block.
 
-    Wraps a base server configuration with optional environment variable
-    examples that guide users on available customization options.
+    Wraps a base server configuration with an env block containing
+    available environment variables. Empty values are safe defaults
+    that produce no behavior change (Config.get_output_dir returns
+    None for empty strings).
 
     Business context: The generated config is written to mcp.json where
-    VS Code reads it to launch the MCP server. Including env examples
-    as underscore-prefixed keys provides inline documentation without
-    affecting runtime behavior, reducing setup friction for new users.
+    VS Code reads it to launch the MCP server. The env block must use
+    the key 'env' (not '_env_example') because MCP hosts only inject
+    variables from the 'env' key into the spawned process.
 
     Args:
         server_config: Base server config with command and args.
-        with_env_example: If True, include _env_example showing available vars.
+        with_env_example: If True, include env block showing available vars.
 
     Returns:
-        Complete server config dict with env example keys when enabled.
+        Complete server config dict with env block when enabled.
 
     Raises:
         No exceptions are raised directly.
@@ -342,21 +344,19 @@ def _generate_mcp_server_config(
     Example:
         >>> base = {"command": "python", "args": ["-m", "ai_session_tracker_mcp"]}
         >>> config = _generate_mcp_server_config(base)
-        >>> "_env_example" in config
+        >>> "env" in config
         True
         >>> config = _generate_mcp_server_config(base, with_env_example=False)
-        >>> "_env_example" in config
+        >>> "env" in config
         False
     """
     config = dict(server_config)
 
     if with_env_example:
-        # Add example env vars as a reference (prefixed with _ to indicate optional)
-        config["_env_example"] = {
+        config["env"] = {
             "AI_MAX_SESSION_DURATION_HOURS": "4.0",
             "AI_OUTPUT_DIR": "",
         }
-        config["_env_example_note"] = "Copy _env_example to 'env' to customize"
 
     return config
 

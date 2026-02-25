@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -100,7 +101,36 @@ class StorageManager:
             >>> # Custom storage path
             >>> storage = StorageManager(storage_dir='/data/sessions')
         """
-        self.storage_dir = storage_dir or Config.get_output_dir() or Config.STORAGE_DIR
+        # Resolve storage directory with full diagnostic logging
+        env_val = os.environ.get(Config.ENV_OUTPUT_DIR)
+        config_val = Config.get_output_dir()
+        resolved = storage_dir or config_val or Config.STORAGE_DIR
+
+        # Log the resolution chain so operators can diagnose path issues
+        if storage_dir:
+            logger.info("Storage directory: %s (explicit argument)", resolved)
+        elif config_val:
+            logger.info(
+                "Storage directory: %s (from %s env var)",
+                resolved,
+                Config.ENV_OUTPUT_DIR,
+            )
+        else:
+            logger.info(
+                "Storage directory: %s (default — %s not set)",
+                resolved,
+                Config.ENV_OUTPUT_DIR,
+            )
+
+        if env_val is not None and not env_val:
+            logger.warning(
+                "%s is set but empty — falling back to default '%s'. "
+                "Set a valid path or remove the variable.",
+                Config.ENV_OUTPUT_DIR,
+                Config.STORAGE_DIR,
+            )
+
+        self.storage_dir = resolved
         self._fs: FileSystem = filesystem or RealFileSystem()
         storage_path = Path(self.storage_dir)
         self.sessions_file = str(storage_path / Config.SESSIONS_FILE)
