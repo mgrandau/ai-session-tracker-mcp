@@ -64,3 +64,36 @@ Shipped four releases in one session (v1.1.0 → v1.1.3), resolving Issue #19 an
 - All four releases cut in a single session — Mark identified each issue in rapid succession during review
 - The acceptance test validates the full chain: default behavior → env var redirect → install config → mcp.json schema → developer/project identity persistence
 - Windows gotcha documented: VS Code doesn't pick up env var changes until fully restarted
+
+## Schema-vs-Instructions Sync Testing
+
+Added `tests/test_agent_schema_sync.py` — 11 mechanical tests that catch drift between MCP tool schemas (server.py) and the instruction/agent files. Commit `5849b05`.
+
+### What it tests (no LLM needed)
+- Every required param in `start_ai_session` / `end_ai_session` schema appears in both the instructions and agent file
+- All enum values (task_type, outcome, estimate_source) listed in instructions
+- Bundled agent file (`src/agent_files/`) and repo copy (`.github/agents/`) are identical
+- Instructions have valid YAML frontmatter, reference all four MCP tools, use REQUIRED labels
+
+### What it can't test
+Whether an LLM *actually follows* the instructions correctly. That requires behavioral evaluation — feeding the instructions + a mock user request to a model and verifying the generated tool calls contain all required params.
+
+### Options researched for LLM-based prompt/instruction testing
+
+1. **Braintrust Autoevals** (`pip install autoevals`) — lightweight LLM-as-judge scoring. Could write test cases like "given these instructions and this user request, did the model generate a tool call with all required params?"
+
+2. **DeepEval** (`pip install deepeval`) — more full-featured. Built-in metrics for tool use correctness, hallucination, faithfulness. Define test cases with expected tool calls and grade against actual output.
+
+3. **Microsoft Prompty** (`pip install prompty`) — designed for prompt testing. Define prompts as assets, run through models, evaluate outputs.
+
+4. **OpenAI Evals** — heavier setup, battle-tested.
+
+5. **GitHub Copilot as evaluator** — no standalone API for programmatic testing. Copilot is embedded in VS Code / Codex / GitHub, not available as a raw HTTP endpoint. Possible workarounds:
+   - Use the Copilot Coding Agent to manually spot-check via GitHub Issues
+   - Call the underlying model (Claude, GPT-4o) directly — same model, just without the Copilot wrapper
+   - Trigger Copilot Coding Agent in CI via GitHub Actions on PR
+
+6. **Direct model call** — simplest practical approach. ~50 lines of Python using `openai` or `anthropic` SDK: send instructions + mock prompt → check response has correct tool call with all required params. Costs cents per run, non-deterministic.
+
+### Assessment
+Mechanical sync tests catch ~90% of bugs (the exact class from the v1.1.2 fix). LLM behavioral eval covers the remaining ~10% but is non-deterministic — useful as a smoke test, risky as a CI gate. Filed as Issue #20 (hold-future).
