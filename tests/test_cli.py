@@ -776,7 +776,15 @@ class TestRunInstall:
 
         server_config = config["servers"]["ai-session-tracker"]
         # Should use module invocation fallback
-        assert server_config["args"] == ["-m", "ai_session_tracker_mcp", "server"]
+        assert server_config["args"] == [
+            "-m",
+            "ai_session_tracker_mcp",
+            "server",
+            "--dashboard-host",
+            "127.0.0.1",
+            "--dashboard-port",
+            "8000",
+        ]
         assert server_config["command"] == sys.executable
 
     def test_run_install_already_up_to_date(self, mock_fs: MockFileSystem) -> None:
@@ -808,7 +816,15 @@ class TestRunInstall:
             "servers": {
                 "ai-session-tracker": {
                     "command": sys.executable,
-                    "args": ["-m", "ai_session_tracker_mcp", "server"],
+                    "args": [
+                        "-m",
+                        "ai_session_tracker_mcp",
+                        "server",
+                        "--dashboard-host",
+                        "127.0.0.1",
+                        "--dashboard-port",
+                        "8000",
+                    ],
                 }
             }
         }

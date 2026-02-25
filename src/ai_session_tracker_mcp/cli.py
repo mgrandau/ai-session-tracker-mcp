@@ -562,12 +562,26 @@ def run_install(
         # Fallback to module invocation
         server_config = {
             "command": sys.executable,
-            "args": ["-m", MODULE_NAME, "server"],
+            "args": [
+                "-m",
+                MODULE_NAME,
+                "server",
+                "--dashboard-host",
+                "127.0.0.1",
+                "--dashboard-port",
+                "8000",
+            ],
         }
     else:  # pragma: no cover - installed executable
         server_config = {
             "command": server_cmd_path,
-            "args": ["server"],
+            "args": [
+                "server",
+                "--dashboard-host",
+                "127.0.0.1",
+                "--dashboard-port",
+                "8000",
+            ],
         }
 
     # Install MCP configuration unless prompts_only is set
