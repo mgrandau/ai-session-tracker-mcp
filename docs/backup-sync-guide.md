@@ -34,6 +34,36 @@ right place, let the sync tool do the rest.
 This is the easiest option and requires zero scheduled tasks. The sync client
 running on your machine monitors the folder and pushes changes automatically.
 
+### Step 1 — Set `AI_OUTPUT_DIR` in your MCP config
+
+The MCP server reads `AI_OUTPUT_DIR` from the `env` block in `.vscode/mcp.json`.
+After running `ai-session-tracker install`, open `.vscode/mcp.json` and set the
+value:
+
+```jsonc
+{
+  "servers": {
+    "ai-session-tracker": {
+      "command": "ai-session-tracker",
+      "args": ["server", "--dashboard-host", "127.0.0.1", "--dashboard-port", "8000"],
+      "env": {
+        "AI_OUTPUT_DIR": "C:\\Users\\jsmith\\OneDrive\\ai-metrics\\my-project",
+        "AI_MAX_SESSION_DURATION_HOURS": "4.0"
+      }
+    }
+  }
+}
+```
+
+> **Why here?** MCP hosts (VS Code, Codex) inject variables from the `env` block
+> into the server process. Setting `AI_OUTPUT_DIR` at the system level also works
+> (see below), but the `mcp.json` approach is portable, per-project, and
+> version-controlled.
+
+### Step 2 — (Optional) Set the environment variable at the OS level
+
+If you prefer a single global setting instead of per-project `mcp.json` config:
+
 **Linux/macOS**
 
 ```bash
@@ -56,6 +86,10 @@ export AI_OUTPUT_DIR=/home/jsmith/OneDrive/ai-metrics/my-project
 1. Open **Start → Edit the system environment variables**
 2. Under **User variables**, click **New**
 3. Name: `AI_OUTPUT_DIR` — Value: `C:\Users\jsmith\OneDrive\ai-metrics\my-project`
+
+> ⚠️ **Windows note:** VS Code does not pick up environment variable changes until
+> it is fully restarted. Changing a User variable via System Properties or
+> PowerShell will not take effect in an already-running VS Code window.
 
 > **Team setup:** Each developer creates a subdirectory named after themselves
 > under a shared parent folder (e.g. `OneDrive/ai-metrics/jsmith/`). A
