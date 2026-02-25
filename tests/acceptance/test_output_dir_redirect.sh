@@ -91,6 +91,43 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ── Helper: verify developer and project fields in sessions.json ─────────────
+# Usage: verify_identity SESSIONS_JSON SESSION_ID EXPECTED_DEV EXPECTED_PROJECT
+verify_identity() {
+    local sessions_file="$1"
+    local session_id="$2"
+    local expected_dev="$3"
+    local expected_proj="$4"
+
+    local identity
+    identity=$(python3 -c "
+import json, sys
+sessions = json.load(open('${sessions_file}'))
+# sessions.json is a dict keyed by session_id
+if isinstance(sessions, dict):
+    s = sessions.get('${session_id}', {})
+else:
+    s = next((x for x in sessions if x.get('session_id') == '${session_id}'), {})
+print(json.dumps({'developer': s.get('developer',''), 'project': s.get('project','')}))
+" 2>/dev/null || echo "{}")
+
+    local dev proj
+    dev=$(echo "${identity}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('developer',''))" 2>/dev/null || echo "")
+    proj=$(echo "${identity}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('project',''))" 2>/dev/null || echo "")
+
+    if [ "${dev}" = "${expected_dev}" ]; then
+        log_pass "developer='${dev}' persisted in session ${session_id}"
+    else
+        log_fail "developer='${dev}' (expected '${expected_dev}') in session ${session_id}"
+    fi
+
+    if [ "${proj}" = "${expected_proj}" ]; then
+        log_pass "project='${proj}' persisted in session ${session_id}"
+    else
+        log_fail "project='${proj}' (expected '${expected_proj}') in session ${session_id}"
+    fi
+}
+
 # =============================================================================
 # TEST 1: Default behavior (no AI_OUTPUT_DIR) — baseline
 # =============================================================================
@@ -137,6 +174,11 @@ if [ -f "${DEFAULT_DIR}/sessions.json" ]; then
     fi
 else
     log_fail "sessions.json not found in default dir"
+fi
+
+# Verify developer and project fields were captured
+if [ -n "${SESSION_ID}" ] && [ -f "${DEFAULT_DIR}/sessions.json" ]; then
+    verify_identity "${DEFAULT_DIR}/sessions.json" "${SESSION_ID}" "test-user" "test-project"
 fi
 
 # End the baseline session
@@ -223,6 +265,11 @@ if [ -f "${CUSTOM_OUTPUT}/sessions.json" ]; then
     fi
 else
     log_fail "sessions.json not found in custom dir"
+fi
+
+# Verify developer and project fields in redirected output
+if [ -n "${SESSION_ID2}" ] && [ -f "${CUSTOM_OUTPUT}/sessions.json" ]; then
+    verify_identity "${CUSTOM_OUTPUT}/sessions.json" "${SESSION_ID2}" "test-user" "test-project"
 fi
 
 # Log an interaction
@@ -490,6 +537,11 @@ for line in info:
             fi
         else
             log_fail "sessions.json not found in AI_OUTPUT_DIR"
+        fi
+
+        # Verify developer and project fields in install-redirected output
+        if [ -n "${SESSION_ID3}" ] && [ -f "${INSTALL_OUTPUT}/sessions.json" ]; then
+            verify_identity "${INSTALL_OUTPUT}/sessions.json" "${SESSION_ID3}" "test-user" "install-project"
         fi
 
         # Log interaction
