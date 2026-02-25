@@ -257,6 +257,8 @@ class SessionTrackerServer:
                         "model_name",
                         "initial_estimate_minutes",
                         "estimate_source",
+                        "developer",
+                        "project",
                     ],
                 },
             },
@@ -334,10 +336,9 @@ class SessionTrackerServer:
                             "type": "number",
                             "description": "Revised estimate: (insertions + deletions) × 10 ÷ 50,"
                             " rounded up to nearest bucket",
-                            "default": None,
                         },
                     },
-                    "required": ["session_id", "outcome"],
+                    "required": ["session_id", "outcome", "final_estimate_minutes"],
                 },
             },
             TOOL_FLAG_ISSUE: {

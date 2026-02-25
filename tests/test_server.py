@@ -276,10 +276,11 @@ class TestToolDefinitions:
         Check properties and required arrays for expected fields.
 
         Assertion Strategy:
-        Validates all five required parameters are defined:
+        Validates all seven required parameters are defined:
         - session_name, task_type, model_name in properties
         - initial_estimate_minutes, estimate_source in properties
-        - All five in required array
+        - developer, project in properties
+        - All seven in required array
 
         Testing Principle:
         Validates API contract for mandatory parameters.
@@ -297,6 +298,8 @@ class TestToolDefinitions:
         assert "estimate_source" in schema["required"]
         assert "developer" in schema["properties"]
         assert "project" in schema["properties"]
+        assert "developer" in schema["required"]
+        assert "project" in schema["required"]
 
     def test_log_interaction_schema(self, server: SessionTrackerServer) -> None:
         """Verifies log_ai_interaction has required parameter schema.
@@ -327,6 +330,40 @@ class TestToolDefinitions:
         assert "session_id" in schema["properties"]
         assert "prompt" in schema["properties"]
         assert "effectiveness_rating" in schema["properties"]
+
+    def test_end_session_schema(self, server: SessionTrackerServer) -> None:
+        """Verifies end_ai_session requires session_id, outcome, and final_estimate_minutes.
+
+        Tests that the end session tool schema enforces all three
+        parameters as required — session_id for lookup, outcome for
+        status, and final_estimate_minutes for the adjusted human
+        time estimate (the core ROI metric).
+
+        Business context:
+        The final_estimate_minutes is the adjusted human baseline that
+        drives ROI calculation. Without it, we can't compute time saved.
+        Making it required ensures every session has a complete ROI picture.
+
+        Arrangement:
+        Extract schema from end_ai_session tool definition.
+
+        Action:
+        Check properties and required arrays for expected fields.
+
+        Assertion Strategy:
+        - session_id, outcome, final_estimate_minutes in properties
+        - All three in required array
+        - notes remains optional (not in required)
+        """
+        schema = server.tools["end_ai_session"]["inputSchema"]
+        assert "session_id" in schema["properties"]
+        assert "outcome" in schema["properties"]
+        assert "final_estimate_minutes" in schema["properties"]
+        assert "notes" in schema["properties"]
+        assert "session_id" in schema["required"]
+        assert "outcome" in schema["required"]
+        assert "final_estimate_minutes" in schema["required"]
+        assert "notes" not in schema["required"]
 
     def test_task_type_enum_matches_config(self, server: SessionTrackerServer) -> None:
         """Verifies task_type enum values match Config.TASK_TYPES.
