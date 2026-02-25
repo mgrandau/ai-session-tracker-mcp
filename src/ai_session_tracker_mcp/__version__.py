@@ -1,6 +1,6 @@
 """Version information for ai-session-tracker-mcp."""
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 __version_date__ = "2026-02-25"
 
 __title__ = "ai_session_tracker_mcp"
