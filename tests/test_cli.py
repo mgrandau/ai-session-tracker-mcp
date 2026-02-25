@@ -709,15 +709,16 @@ class TestRunInstall:
         assert mock_fs.exists("/project/.github/instructions/test.instructions.md")
         assert mock_fs.get_file("/project/.github/agents/test.agent.md") == "# Test Agent"
 
-    def test_run_install_skips_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
-        """Verifies run_install doesn't overwrite existing agent files.
+    def test_run_install_overwrites_existing_agent_files(self, mock_fs: MockFileSystem) -> None:
+        """Verifies run_install overwrites existing agent files with latest.
 
-        Tests that install skips copying files that already exist at
-        the destination.
+        Tests that install always copies the latest bundled files over
+        existing ones — these are package-managed, not user-editable.
 
         Business context:
-        Users may have customized their agent files. Install should
-        not overwrite their modifications.
+        Agent files define required params and protocols. When the package
+        updates (e.g., making developer/project required), existing installs
+        must get the new files to stay in sync.
 
         Arrangement:
         Set up both source and destination files in mock filesystem.
@@ -726,7 +727,7 @@ class TestRunInstall:
         Call run_install function.
 
         Assertion Strategy:
-        Validates existing file content is preserved.
+        Validates existing file content is replaced with new content.
         """
         from ai_session_tracker_mcp.cli import run_install
 
@@ -740,8 +741,8 @@ class TestRunInstall:
 
         run_install(filesystem=mock_fs, cwd="/project", package_dir="/pkg")
 
-        # Verify existing content is preserved
-        assert mock_fs.get_file("/project/.github/agents/test.agent.md") == "# Existing Content"
+        # Verify content was updated to new version
+        assert mock_fs.get_file("/project/.github/agents/test.agent.md") == "# New Content"
 
     def test_run_install_fallback_to_module_invocation(self, mock_fs: MockFileSystem) -> None:
         """Verifies run_install uses module invocation when executable not found.

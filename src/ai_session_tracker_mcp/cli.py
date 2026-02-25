@@ -424,12 +424,14 @@ def _copy_agent_files(
     Copy bundled agent files to project's .github directory.
 
     Copies agent definitions and instruction files from the installed
-    package to the user's project. Files that already exist are skipped
-    to preserve user customizations.
+    package to the user's project. Existing files are always overwritten
+    to ensure the latest version is deployed — these are package-managed
+    files, not user-editable.
 
     Business context: Agent files configure VS Code's AI assistant behavior
     for session tracking. Installing them to .github ensures they're
-    version-controlled and shared with team members.
+    version-controlled and shared with team members. Overwriting on
+    install guarantees schema changes (e.g., new required params) propagate.
 
     Args:
         fs: FileSystem instance for file operations.
@@ -474,7 +476,8 @@ def _copy_agent_files(
                 fs.copy_file(src_file, dst_file)
                 _log(f"Created {rel_path}", emoji="📝")
             else:
-                _log(f"{rel_path} exists", emoji="✓")
+                fs.copy_file(src_file, dst_file)
+                _log(f"Updated {rel_path}", emoji="🔄")
 
 
 def run_install(
