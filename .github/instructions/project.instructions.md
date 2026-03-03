@@ -3,7 +3,7 @@ applyTo: '**'
 ---
 # Project Intent & Design
 
-Before making design decisions, architectural changes, or proposing new features, read the [🧭 Why This Exists](../../README.md#-why-this-exists) section in the README. It defines the project's guiding philosophy — intent leads, measurement follows. Design choices should trace back to those principles.
+Before making design decisions, architectural changes, or proposing new features, read the [🧭 Intent](../../README.md#-intent) section in the README. It defines the project's guiding philosophy — intent leads, measurement follows. Design choices should trace back to those principles.
 
 For historical context on what was built and why, see [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md).
 

@@ -2,7 +2,7 @@
 
 This is a **historical record** of what was actually built, when, and why. It's organized by development phases rather than chronological commits, with GitHub issues and version milestones mapped to each phase.
 
-For the philosophy and design intent behind this project, see [🧭 Why This Exists](../README.md#-why-this-exists) in the README. Design decisions and architectural choices throughout this plan trace back to those principles — intent leads, measurement follows.
+For the philosophy and design intent behind this project, see [🧭 Intent](../README.md#-intent) in the README. Design decisions and architectural choices throughout this plan trace back to those principles — intent leads, measurement follows.
 
 Current state: **v1.1.3** — 573 tests, 99.55% coverage.
 

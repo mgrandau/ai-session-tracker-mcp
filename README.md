@@ -10,7 +10,7 @@ Track your AI-assisted coding sessions, measure effectiveness, calculate ROI, an
 >
 ---
 
-## 🧭 Why This Exists
+## 🧭 Intent
 
 The AI productivity debate is stuck on opinions. This tool exists because **if you can't measure it, you can't improve it.**
 
