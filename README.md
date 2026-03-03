@@ -4,8 +4,6 @@
 
 **MCP server for tracking AI coding sessions and measuring developer productivity.**
 
-Track your AI-assisted coding sessions, measure effectiveness, calculate ROI, and identify workflow friction points — all through the Model Context Protocol.
-
 > 📖 **Read the blog post:** [I Stopped Arguing About AI Productivity and Started Measuring It](https://mgrandau.medium.com/i-stopped-arguing-about-ai-productivity-and-started-measuring-it-7b1b030d7d79?source=friends_link&sk=805085ba145a4a501a75510aa6818751)
 >
 ---
