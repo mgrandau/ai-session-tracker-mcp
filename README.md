@@ -10,6 +10,18 @@ Track your AI-assisted coding sessions, measure effectiveness, calculate ROI, an
 >
 ---
 
+## 🧭 Why This Exists
+
+The AI productivity debate is stuck on opinions. This tool exists because **if you can't measure it, you can't improve it.**
+
+Most teams adopt AI coding tools and hope for the best. Hope isn't a strategy. Measurement is. Every session you track produces data — time saved, friction points, effectiveness ratings — that compounds into real insight about how AI actually changes your workflow.
+
+The design follows the [Human-AI Intent Transfer Principles](https://mgrandau.medium.com/human-ai-intent-transfer-principles-b6e7404e3d26?source=friends_link&sk=858917bd3f4a686974ed6b6c9c059ac8): eight principles for making human intent legible to AI systems. The core idea is simple — **intent leads, measurement follows.** You declare what you're trying to accomplish, the AI acts on it, and the tool captures what actually happened. The gap between intent and outcome is where improvement lives.
+
+This isn't about proving AI works. It's about knowing *how well* it works for *your* workflow, and getting better at it over time.
+
+---
+
 ## ✨ Features
 
 - 📊 **Session Tracking** — Start, log interactions, and end coding sessions with full context
