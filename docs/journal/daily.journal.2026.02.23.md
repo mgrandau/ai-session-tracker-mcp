@@ -34,6 +34,16 @@ Both fully completed — just excluded from ROI calculations by design.
 
 ## Fix
 
+### Alternatives considered
+
+**Filter human_review from total count too** — make `total_sessions` also exclude human_review tasks, so total and completed always match within the ROI-filtered set. Rejected because it hides real sessions from the user. If you ran 572 sessions, the dashboard should say 572 — not pretend some don't exist.
+
+**Add an "excluded" status category** — show `572 (570 completed, 2 excluded from ROI)` as a three-part breakdown. Rejected as overcomplicating the header for an edge case. The correct fix is simpler: count completed from the full set, not the filtered set.
+
+**Show active/open count instead of completed** — display `572 (0 active)` rather than `572 (570 completed)`. Considered briefly — it's what users actually care about (are any stuck?). But it changes the dashboard contract and doesn't address the root cause. Deferred as a possible future UX improvement.
+
+### Chosen approach
+
 Changed `presenters.py` to count completed sessions from the full session set instead of the ROI-filtered subset:
 ```python
 completed_sessions=sum(

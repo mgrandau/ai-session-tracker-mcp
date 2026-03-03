@@ -28,15 +28,15 @@ Shipped four releases in one session (v1.1.0 → v1.1.3), resolving Issue #19 an
 
 ## Decision Log
 
-- **`env` over `_env_example`**: MCP hosts only read the `env` key. The underscore-prefixed `_env_example` was dead documentation that users had to manually rename — easy to miss and the root cause of #19. Empty defaults fall through safely, so no behavior change for users who don't set the var.
+- **`env` over `_env_example`**: MCP hosts only read the `env` key. The underscore-prefixed `_env_example` was dead documentation that users had to manually rename — easy to miss and the root cause of #19. Empty defaults fall through safely, so no behavior change for users who don't set the var. **Rejected alternative:** generate a comment block or README-only documentation of env vars instead of a real `env` block. Rejected because the whole point is zero-friction — if the user has to copy/rename/uncomment, they won't.
 
-- **Dashboard args in install**: Users shouldn't have to know about `--dashboard-host` and `--dashboard-port`. The install should produce a working config out of the box.
+- **Dashboard args in install**: Users shouldn't have to know about `--dashboard-host` and `--dashboard-port`. The install should produce a working config out of the box. **Rejected alternative:** require users to manually add dashboard args or run a separate `ai-session-tracker dashboard` command. Rejected because a dead dashboard (no args = no dashboard) looks like a broken feature, not a configuration choice.
 
-- **`developer`, `project`, `final_estimate_minutes` required**: These were technically optional in the schema, which meant agents would silently skip them. `developer`/`project` are needed for team-wide analytics. `final_estimate_minutes` is the core ROI metric — without it, we can't calculate time saved.
+- **`developer`, `project`, `final_estimate_minutes` required**: These were technically optional in the schema, which meant agents would silently skip them. `developer`/`project` are needed for team-wide analytics. `final_estimate_minutes` is the core ROI metric — without it, we can't calculate time saved. **Rejected alternative:** keep them optional and validate at report time. Rejected because missing data at write time can't be recovered later — the agent has the context at session start/end, not at report time.
 
-- **Always overwrite agent files**: These are package-managed files that define the agent's behavior contract. Users who want custom instructions should create separate files, not edit the bundled ones. Overwriting on install ensures schema changes propagate.
+- **Always overwrite agent files**: These are package-managed files that define the agent's behavior contract. Users who want custom instructions should create separate files, not edit the bundled ones. Overwriting on install ensures schema changes propagate. **Rejected alternative:** merge/patch strategy that preserves user edits while updating schema-relevant sections. Rejected as fragile — instruction files aren't structured data, they're prose. Merging prose reliably is an unsolved problem.
 
-- **`${env:AI_OUTPUT_DIR}` in mcp.json**: The `env` block should reference the OS-level variable, not hardcode a path. This keeps the config portable — same `mcp.json` works for every developer, each with their own `AI_OUTPUT_DIR` set at the OS level.
+- **`${env:AI_OUTPUT_DIR}` in mcp.json**: The `env` block should reference the OS-level variable, not hardcode a path. This keeps the config portable — same `mcp.json` works for every developer, each with their own `AI_OUTPUT_DIR` set at the OS level. **Rejected alternative:** per-user `.vscode/mcp.local.json` override file. Rejected because VS Code doesn't support config layering for MCP — there's one `mcp.json` and that's it.
 
 ## Commits
 

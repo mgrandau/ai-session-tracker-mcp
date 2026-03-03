@@ -130,6 +130,14 @@ There is also a friction problem in the current End Session Protocol. The existi
 - `initial_estimate_minutes` — the developer's gut estimate before starting, captured at `start_ai_session`
 - `final_estimate_minutes` — the revised estimate after completing the work, captured at `end_ai_session` as an optional parameter
 
+### Alternatives rejected
+
+**Single mutable field** — keep one `human_time_estimate_minutes` and let agents overwrite it at session end. Rejected because it destroys the initial estimate — you can't measure estimation accuracy if you only keep the final number.
+
+**Separate retrospective prompt** — ask the developer "how long would this have taken without AI?" at session end. Rejected because subjective retrospective estimates are unreliable and add friction. The git-diff mechanical proxy is consistent and automatic, even if imperfect.
+
+**Three-field model (initial, final, retrospective)** — capture both a mechanical proxy and a subjective developer estimate. Rejected as overengineered for v1 — adds cognitive load at session end. Can revisit if estimation accuracy analytics (deferred from this issue) reveals the mechanical proxy is insufficient.
+
 The rename from `human_time_estimate_minutes` to `initial_estimate_minutes` is deliberate — the old name implied a single canonical estimate, which no longer fits the model. Backward compatibility is preserved in `from_dict()` by reading the old key as a fallback.
 
 **`end_ai_session` becomes the update point:**
