@@ -76,6 +76,8 @@ Stabilized the release process, expanded test coverage, and improved documentati
 
 **Goal:** Give developers control over where data lives, capture richer session metadata, and get out of the backup business.
 
+**Intent evolution:** Phase 4 marked a fundamental realignment — the project removed storage from collection. The MCP server's job is to *collect* session data, not to own where it lives or how it's backed up. S3 auto-backup (#14) was built in Phase 2 thinking, where the server tried to do everything. Removing it clarified the responsibility boundary: the server writes files, the developer chooses the storage strategy. This separation made `AI_OUTPUT_DIR` (#13) possible — once you stop owning backup, redirectable output becomes the natural interface.
+
 Major refactor of data handling — removed built-in S3 backup in favor of external guides, added configurable output directories, and improved session metadata capture.
 
 | Date | Work | Issues |
