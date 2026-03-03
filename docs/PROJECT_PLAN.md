@@ -26,6 +26,8 @@ Established the project from scratch: core architecture, test infrastructure, an
 - CI pipeline established early
 - Dashboard and statistics engine built alongside core tracking
 
+**Risk posture:** Low — exploring, nothing in production. Speed over rigor. No users, no data to protect.
+
 ---
 
 ## Phase 2: Core Features & Installation (2026-01-15 → 2026-01-25)
@@ -50,6 +52,8 @@ Closed the first wave of GitHub issues — focused on making the tool installabl
 
 **Milestone:** `v1.0.1` (2026-01-15)
 
+**Risk posture:** Low-medium — real features shipping, but single-user only. Auto-close (#4) could lose data if the logic was wrong, but blast radius was one developer.
+
 ---
 
 ## Phase 3: Release Engineering & Documentation (2026-01-26 → 2026-02-06)
@@ -69,6 +73,8 @@ Stabilized the release process, expanded test coverage, and improved documentati
 - **#8** Update distributed session tracking instructions
 
 **Milestone:** `v1.0.4` (2026-01-26)
+
+**Risk posture:** Medium — preparing for others to install and use. Bad docs or broken installs erode trust before anyone sees the value. Release process formalized to prevent shipping regressions.
 
 ---
 
@@ -101,6 +107,8 @@ These journal entries capture the alternatives explored and rationale behind key
 
 **Milestone:** `v1.0.5` (2026-02-20)
 
+**Risk posture:** High — schema decisions here are permanent. Wrong field names, wrong semantics, wrong separation of concerns → bad data that compounds across every session for every user. S3 removal was a deliberate scope reduction to lower long-term risk. Every design choice journaled with alternatives and rejection rationale.
+
 ---
 
 ## Phase 5: Quality, Testing & Stability (2026-02-23 → 2026-02-25)
@@ -126,6 +134,8 @@ Final push on quality — display bug fixes, documentation upgrades, acceptance 
 - [2026-02-25](journal/daily.journal.2026.02.25.md) — **#19**: `env` vs `_env_example` root cause. Decision to make `developer`, `project`, `final_estimate_minutes` required fields. Research on LLM-based behavioral testing options (Promptfoo, DeepEval, Prompty) for instruction file validation.
 
 **Milestones:** `v1.0.6` (2026-02-23) → `v1.1.0` → `v1.1.1` → `v1.1.2` (2026-02-25)
+
+**Risk posture:** Highest — approaching MVP. Required fields enforced at the schema level because optional fields silently produce garbage data. Acceptance tests validate the full chain end-to-end. Agent files always overwritten on install to prevent schema drift. 573 tests, 99.55% coverage. Validation rigor matched to consequence: every session from here forward carries the data contract.
 
 ---
 
