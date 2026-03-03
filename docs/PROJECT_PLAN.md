@@ -82,6 +82,13 @@ Major refactor of data handling — removed built-in S3 backup in favor of exter
 - **#15** Auto-capture developer/project
 - **#16** Split initial/final estimate
 
+**Design discussions (journal):**
+
+These journal entries capture the alternatives explored and rationale behind key decisions:
+
+- [2026-02-20](journal/daily.journal.2026.02.20.md) — **#13 AI_OUTPUT_DIR**: Evaluated MCP server auto-detect vs. environment variables vs. agent-resolved paths. Chose env var for simplicity and cross-host portability. **#15 Auto-capture**: Considered OS username, git config, and explicit params — chose explicit with OS fallback. **#16 Split estimates**: Resolved initial vs. final estimate semantics and impact on ROI calculations. **#17 Integrity**: Evaluated hash chain, sidecar hash, HMAC, git bare repo, and append-only audit log — chose sidecar SHA256 (minimal code, no schema changes).
+- [2026-02-21](journal/daily.journal.2026.02.21.md) — Summary of all Phase 4 implementations, decision log, and next steps.
+
 **Milestone:** `v1.0.5` (2026-02-20)
 
 ---
@@ -100,6 +107,11 @@ Final push on quality — display bug fixes, documentation upgrades, acceptance 
 - **#10** Codex MCP server setup docs
 - **#18** Display bug — open session count
 - **#19** AI_OUTPUT_DIR env block fix
+
+**Design discussions (journal):**
+
+- [2026-02-23](journal/daily.journal.2026.02.23.md) — **#18**: Root cause analysis of `completed_sessions` counting from ROI-filtered subset instead of full session set. Decision log on fix approach.
+- [2026-02-25](journal/daily.journal.2026.02.25.md) — **#19**: `env` vs `_env_example` root cause. Decision to make `developer`, `project`, `final_estimate_minutes` required fields. Research on LLM-based behavioral testing options (Promptfoo, DeepEval, Prompty) for instruction file validation.
 
 **Milestones:** `v1.0.6` (2026-02-23) → `v1.1.0` → `v1.1.1` → `v1.1.2` (2026-02-25)
 
