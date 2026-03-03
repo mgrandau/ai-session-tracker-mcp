@@ -3,9 +3,24 @@ applyTo: '**'
 ---
 # Project Intent & Design
 
-Before making design decisions, architectural changes, or proposing new features, read the [🧭 Intent](../../README.md#-intent) section in the README. It defines the project's guiding philosophy — intent leads, measurement follows. Design choices should trace back to those principles.
+This project follows the [Human-AI Intent Transfer Principles](https://mgrandau.medium.com/human-ai-intent-transfer-principles-b6e7404e3d26?source=friends_link&sk=858917bd3f4a686974ed6b6c9c059ac8) — eight principles for making human intent legible to AI systems.
 
-For historical context on what was built and why, see [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md).
+**Context chain (read in order when making design decisions):**
+
+1. [🧭 Intent](../../README.md#-intent) — project philosophy: intent leads, measurement follows
+2. [PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md) — phase goals, risk posture, intent evolution
+3. [Journal entries](../../docs/journal/) — design alternatives explored and rejected, with rationale
+4. Source code — the implementation
+
+**Core design values (from rejection patterns in the journal):**
+
+- **Collection ≠ storage** — the MCP server writes files, it doesn't own backup or sync (S3 removed in Phase 4)
+- **Portability over convenience** — env vars over config files, works on OneDrive/NAS/local
+- **Schema decisions are permanent** — required fields enforced because optional fields produce garbage data
+- **Agent files are package-managed** — always overwritten on install, not user-editable
+- **Mechanical over subjective** — git-diff proxy for effort, git config for identity, no retrospective guessing
+
+When proposing new features or changes, check the journal for prior art — the alternative you're considering may have already been evaluated and rejected.
 
 # Release Process
 
