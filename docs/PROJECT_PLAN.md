@@ -10,6 +10,8 @@ Current state: **v1.1.3** — 573 tests, 99.55% coverage.
 
 ## Phase 1: Foundation (2025-12-06 → 2025-12-13)
 
+**Goal:** Build a testable, CI-backed session tracker with a dashboard from day one — no throwaway prototyping.
+
 Established the project from scratch: core architecture, test infrastructure, and the initial feature set.
 
 | Date | Work |
@@ -27,6 +29,8 @@ Established the project from scratch: core architecture, test infrastructure, an
 ---
 
 ## Phase 2: Core Features & Installation (2026-01-15 → 2026-01-25)
+
+**Goal:** Make the tool installable and usable for real workflows — CLI, MCP, and agent modes all working.
 
 Closed the first wave of GitHub issues — focused on making the tool installable, usable, and correct.
 
@@ -50,6 +54,8 @@ Closed the first wave of GitHub issues — focused on making the tool installabl
 
 ## Phase 3: Release Engineering & Documentation (2026-01-26 → 2026-02-06)
 
+**Goal:** Stabilize the release process so shipping is repeatable, and document the tool well enough that others can adopt it.
+
 Stabilized the release process, expanded test coverage, and improved documentation.
 
 | Date | Work | Issues |
@@ -67,6 +73,8 @@ Stabilized the release process, expanded test coverage, and improved documentati
 ---
 
 ## Phase 4: Data Management & Configuration (2026-02-20 → 2026-02-21)
+
+**Goal:** Give developers control over where data lives, capture richer session metadata, and get out of the backup business.
 
 Major refactor of data handling — removed built-in S3 backup in favor of external guides, added configurable output directories, and improved session metadata capture.
 
@@ -94,6 +102,8 @@ These journal entries capture the alternatives explored and rationale behind key
 ---
 
 ## Phase 5: Quality, Testing & Stability (2026-02-23 → 2026-02-25)
+
+**Goal:** Fix user-facing bugs, enforce data quality at the schema level, and prove it all works end-to-end with acceptance tests.
 
 Final push on quality — display bug fixes, documentation upgrades, acceptance tests, and schema validation.
 
