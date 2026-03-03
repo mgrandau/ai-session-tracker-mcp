@@ -16,6 +16,8 @@ Most teams adopt AI coding tools and hope for the best. Hope isn't a strategy. M
 
 The design follows the [Human-AI Intent Transfer Principles](https://mgrandau.medium.com/human-ai-intent-transfer-principles-b6e7404e3d26?source=friends_link&sk=858917bd3f4a686974ed6b6c9c059ac8): eight principles for making human intent legible to AI systems. The core idea is simple — **intent leads, measurement follows.** You declare what you're trying to accomplish, the AI acts on it, and the tool captures what actually happened. The gap between intent and outcome is where improvement lives.
 
+These principles shaped every phase of development: the [project plan](docs/PROJECT_PLAN.md) documents goals and risk posture per phase, journal entries capture every design alternative explored and why it was rejected, and Phase 4's removal of built-in S3 backup was an explicit intent realignment — separating data collection from data storage.
+
 This isn't about proving AI works. It's about knowing *how well* it works for *your* workflow, and getting better at it over time.
 
 ---
