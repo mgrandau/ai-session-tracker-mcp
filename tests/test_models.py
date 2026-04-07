@@ -14,7 +14,67 @@ from ai_session_tracker_mcp.models import (
     Session,
     _generate_session_id,
     _now_iso,
+    validate_session_name,
 )
+
+
+class TestValidateSessionName:
+    """Tests for validate_session_name function."""
+
+    def test_valid_ascii_name(self) -> None:
+        """Valid ASCII session name returns None (no error)."""
+        assert validate_session_name("Add login feature") is None
+
+    def test_valid_name_with_punctuation(self) -> None:
+        """Valid name with common punctuation returns None."""
+        assert validate_session_name("Fix bug #22 - non-ascii") is None
+
+    def test_valid_name_with_numbers(self) -> None:
+        """Valid name with numbers returns None."""
+        assert validate_session_name("Phase 3: testing") is None
+
+    def test_empty_name_rejected(self) -> None:
+        """Empty string returns error message."""
+        result = validate_session_name("")
+        assert result is not None
+        assert "cannot be empty" in result
+
+    def test_whitespace_only_rejected(self) -> None:
+        """Whitespace-only string returns error message."""
+        result = validate_session_name("   ")
+        assert result is not None
+        assert "cannot be empty" in result
+
+    def test_non_ascii_accent_rejected(self) -> None:
+        """Accented characters are rejected with clear error."""
+        result = validate_session_name("caf\u00e9 debugging")
+        assert result is not None
+        assert "non-ASCII" in result
+        assert "\u00e9" in result
+
+    def test_non_ascii_emoji_rejected(self) -> None:
+        """Emoji characters are rejected."""
+        result = validate_session_name("rocket \U0001f680 launch")
+        assert result is not None
+        assert "non-ASCII" in result
+
+    def test_non_ascii_cjk_rejected(self) -> None:
+        """CJK characters are rejected."""
+        result = validate_session_name("\u6d4b\u8bd5 session")
+        assert result is not None
+        assert "non-ASCII" in result
+
+    def test_non_ascii_dash_variants_rejected(self) -> None:
+        """Unicode dash variants (em-dash, en-dash) are rejected."""
+        result = validate_session_name("task \u2014 subtask")
+        assert result is not None
+        assert "non-ASCII" in result
+
+    def test_control_characters_rejected(self) -> None:
+        """Control characters (below space) are rejected."""
+        result = validate_session_name("line\x00break")
+        assert result is not None
+        assert "non-ASCII" in result
 
 
 class TestHelperFunctions:
