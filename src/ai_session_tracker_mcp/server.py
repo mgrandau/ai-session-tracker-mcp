@@ -67,6 +67,8 @@ TOOL_FLAG_ISSUE = "flag_ai_issue"
 TOOL_LOG_CODE_METRICS = "log_code_metrics"
 TOOL_GET_OBSERVABILITY = "get_ai_observability"
 TOOL_GET_ACTIVE_SESSIONS = "get_active_sessions"
+TOOL_LOG_REQUEST = "log_ai_request"
+TOOL_GET_REQUEST_STATS = "get_request_stats"
 
 # Documentation scoring constants
 DOC_SCORE_HAS_DOCSTRING = 30
@@ -170,6 +172,8 @@ class SessionTrackerServer:
             TOOL_LOG_CODE_METRICS: self._handle_log_code_metrics,
             TOOL_GET_OBSERVABILITY: self._handle_get_observability,
             TOOL_GET_ACTIVE_SESSIONS: self._handle_get_active_sessions,
+            TOOL_LOG_REQUEST: self._handle_log_request,
+            TOOL_GET_REQUEST_STATS: self._handle_get_request_stats,
         }
 
         # Tool definitions for tools/list response
@@ -448,6 +452,87 @@ class SessionTrackerServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
+                    "required": [],
+                },
+            },
+            TOOL_LOG_REQUEST: {
+                "name": TOOL_LOG_REQUEST,
+                "description": (
+                    "Log an individual AI request/response record with token "
+                    "usage and cache stats. Standalone tracking — no session needed."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "description": "AI model used (e.g., 'claude-opus-4.6')",
+                        },
+                        "request_type": {
+                            "type": "string",
+                            "description": (
+                                "Request category: coding, planning, review, debug, general"
+                            ),
+                            "enum": ["coding", "planning", "review", "debug", "general"],
+                        },
+                        "tokens_in": {
+                            "type": "integer",
+                            "description": "Input tokens for this request",
+                        },
+                        "tokens_out": {
+                            "type": "integer",
+                            "description": "Output tokens for this request",
+                        },
+                        "cache_hit_rate": {
+                            "type": "number",
+                            "description": "Cache hit rate 0.0-1.0",
+                        },
+                        "cached_tokens": {
+                            "type": "integer",
+                            "description": "Tokens served from cache",
+                        },
+                        "new_tokens": {
+                            "type": "integer",
+                            "description": "Fresh (non-cached) tokens",
+                        },
+                        "context_pct": {
+                            "type": "number",
+                            "description": "Context window utilization percentage",
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Optional freetext note",
+                        },
+                        "project": {
+                            "type": "string",
+                            "description": "Project name",
+                        },
+                        "developer": {
+                            "type": "string",
+                            "description": "Developer name",
+                        },
+                    },
+                    "required": ["model", "request_type"],
+                },
+            },
+            TOOL_GET_REQUEST_STATS: {
+                "name": TOOL_GET_REQUEST_STATS,
+                "description": (
+                    "Get aggregated statistics for per-request tracking records. "
+                    "Optionally filter by type or model."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "request_type": {
+                            "type": "string",
+                            "description": "Filter by request type",
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Filter by model name",
+                        },
+                    },
                     "required": [],
                 },
             },
@@ -1220,6 +1305,77 @@ Session: {session_id}
         except Exception as e:
             logger.error(f"Error getting active sessions: {e}")
             return self._error_response(msg_id, -32603, f"Failed to get active sessions: {e}")
+
+    async def _handle_log_request(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
+        """Handle log_ai_request tool to record a per-request tracking record.
+
+        Args:
+            args: Tool arguments with model, request_type, and optional metrics.
+            msg_id: JSON-RPC message ID for response correlation.
+
+        Returns:
+            JSON-RPC success response with request_id, or error response.
+        """
+        result = self.session_service.log_request(
+            model=args.get("model", ""),
+            request_type=args.get("request_type", ""),
+            tokens_in=int(args.get("tokens_in", 0)),
+            tokens_out=int(args.get("tokens_out", 0)),
+            cache_hit_rate=float(args.get("cache_hit_rate", 0.0)),
+            cached_tokens=int(args.get("cached_tokens", 0)),
+            new_tokens=int(args.get("new_tokens", 0)),
+            context_pct=float(args.get("context_pct", 0.0)),
+            note=args.get("note", ""),
+            project=args.get("project", ""),
+            developer=args.get("developer", ""),
+        )
+
+        if not result.success:
+            return self._error_response(msg_id, -32603, result.error or result.message)
+
+        data = result.data or {}
+        response_text = (
+            f"\n\U0001f4cb **Request Logged**\n\n"
+            f"- **ID**: `{data.get('request_id', '')}`\n"
+            f"- **Type**: {data.get('type', '')}\n"
+            f"- **Model**: {data.get('model', '')}\n"
+            f"- **Tokens**: {data.get('tokens_in', 0)} in / {data.get('tokens_out', 0)} out\n"
+        )
+
+        return self._success_response(msg_id, response_text, data)
+
+    async def _handle_get_request_stats(self, args: dict[str, Any], msg_id: Any) -> dict[str, Any]:
+        """Handle get_request_stats tool to retrieve aggregated request metrics.
+
+        Args:
+            args: Optional filters (request_type, model).
+            msg_id: JSON-RPC message ID for response correlation.
+
+        Returns:
+            JSON-RPC success response with stats, or error response.
+        """
+        result = self.session_service.get_request_stats(
+            request_type=args.get("request_type"),
+            model=args.get("model"),
+        )
+
+        if not result.success:
+            return self._error_response(msg_id, -32603, result.error or result.message)
+
+        data = result.data or {}
+        response_text = (
+            f"\n\U0001f4ca **Request Stats** ({data.get('total_requests', 0)} requests)\n\n"
+            f"- **Tokens In**: {data.get('total_tokens_in', 0)} "
+            f"(avg {data.get('avg_tokens_in', 0)}/req)\n"
+            f"- **Tokens Out**: {data.get('total_tokens_out', 0)} "
+            f"(avg {data.get('avg_tokens_out', 0)}/req)\n"
+            f"- **Cached**: {data.get('total_cached_tokens', 0)} "
+            f"(avg hit rate {data.get('avg_cache_hit_rate', 0):.1%})\n"
+            f"- **By Type**: {data.get('by_type', {})}\n"
+            f"- **By Model**: {data.get('by_model', {})}\n"
+        )
+
+        return self._success_response(msg_id, response_text, data)
 
     # =========================================================================
     # RESPONSE HELPERS

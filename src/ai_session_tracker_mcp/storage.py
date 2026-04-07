@@ -136,6 +136,7 @@ class StorageManager:
         self.sessions_file = str(storage_path / Config.SESSIONS_FILE)
         self.interactions_file = str(storage_path / Config.INTERACTIONS_FILE)
         self.issues_file = str(storage_path / Config.ISSUES_FILE)
+        self.requests_file = str(storage_path / Config.REQUESTS_FILE)
         self.charts_dir = str(storage_path / Config.CHARTS_DIR)
 
         self._initialize_storage()
@@ -179,6 +180,8 @@ class StorageManager:
                 self._write_json(self.interactions_file, [])
             if not self._fs.exists(self.issues_file):
                 self._write_json(self.issues_file, [])
+            if not self._fs.exists(self.requests_file):
+                self._write_json(self.requests_file, [])
 
             logger.info(f"Storage initialized: {self.storage_dir}")
         except OSError as e:
@@ -716,6 +719,43 @@ class StorageManager:
         return self._filter_by_session(self.load_issues(), session_id)
 
     # =========================================================================
+    # REQUEST OPERATIONS
+    # =========================================================================
+
+    def load_requests(self) -> list[dict[str, Any]]:
+        """Load all per-request tracking records from JSON storage.
+
+        Returns:
+            List of request dicts. Empty list if file missing or invalid.
+        """
+        result: list[dict[str, Any]] = self._read_json(self.requests_file, [])
+        return result
+
+    def save_requests(self, requests: list[dict[str, Any]]) -> bool:
+        """Persist all requests to JSON storage.
+
+        Args:
+            requests: Complete list of request dicts to write.
+
+        Returns:
+            True on success, False on failure.
+        """
+        return self._write_json(self.requests_file, requests)
+
+    def add_request(self, request: dict[str, Any]) -> bool:
+        """Append a single request record to storage.
+
+        Args:
+            request: Request dict to append.
+
+        Returns:
+            True on success, False on failure.
+        """
+        requests = self.load_requests()
+        requests.append(request)
+        return self.save_requests(requests)
+
+    # =========================================================================
     # MAINTENANCE OPERATIONS
     # =========================================================================
 
@@ -752,6 +792,7 @@ class StorageManager:
         success = self._write_json(self.sessions_file, {})
         success = success and self._write_json(self.interactions_file, [])
         success = success and self._write_json(self.issues_file, [])
+        success = success and self._write_json(self.requests_file, [])
         if success:  # pragma: no cover - logging only
             logger.info("All data files cleared")
         return success

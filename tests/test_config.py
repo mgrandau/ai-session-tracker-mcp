@@ -141,6 +141,7 @@ class TestConfigConstants:
             "analysis",
             "architecture_planning",
             "human_review",
+            "planning",
         }
         assert expected == Config.TASK_TYPES
 

@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .config import Config
-from .models import Interaction, Issue, Session, validate_session_name
+from .models import Interaction, Issue, Request, Session, validate_session_name
 from .statistics import StatisticsEngine
 from .storage import StorageManager
 
@@ -794,6 +794,162 @@ class SessionService:
             return ServiceResult(
                 success=False,
                 message="Failed to generate report",
+                error=str(e),
+            )
+
+    def log_request(
+        self,
+        model: str,
+        request_type: str,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cache_hit_rate: float = 0.0,
+        cached_tokens: int = 0,
+        new_tokens: int = 0,
+        context_pct: float = 0.0,
+        note: str = "",
+        project: str = "",
+        developer: str = "",
+    ) -> ServiceResult:
+        """Log an individual AI request/response record.
+
+        Creates a standalone per-request tracking record. Unlike sessions,
+        requests are atomic — each one is independent with its own token
+        usage and type classification.
+
+        Args:
+            model: AI model used (e.g., 'claude-opus-4.6').
+            request_type: Category from Config.REQUEST_TYPES.
+            tokens_in: Input tokens for this request.
+            tokens_out: Output tokens for this request.
+            cache_hit_rate: Cache hit rate as a float 0.0-1.0.
+            cached_tokens: Number of tokens served from cache.
+            new_tokens: Number of fresh (non-cached) tokens.
+            context_pct: Context window utilization percentage.
+            note: Optional freetext note.
+            project: Optional project name.
+            developer: Optional developer name.
+
+        Returns:
+            ServiceResult with request_id in data on success.
+        """
+        try:
+            if request_type not in Config.REQUEST_TYPES:
+                return ServiceResult(
+                    success=False,
+                    message="Invalid request type",
+                    error=(
+                        f"request_type must be one of: {', '.join(sorted(Config.REQUEST_TYPES))}"
+                    ),
+                )
+
+            request = Request.create(
+                model=model,
+                request_type=request_type,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cache_hit_rate=cache_hit_rate,
+                cached_tokens=cached_tokens,
+                new_tokens=new_tokens,
+                context_pct=context_pct,
+                note=note,
+                project=project,
+                developer=developer,
+            )
+
+            self.storage.add_request(request.to_dict())
+
+            logger.info(f"Logged request: {request.id} ({request_type})")
+
+            return ServiceResult(
+                success=True,
+                message=f"Request logged: {request.id}",
+                data={
+                    "request_id": request.id,
+                    "type": request_type,
+                    "model": model,
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error logging request: {e}")
+            return ServiceResult(
+                success=False,
+                message="Failed to log request",
+                error=str(e),
+            )
+
+    def get_request_stats(
+        self,
+        request_type: str | None = None,
+        model: str | None = None,
+    ) -> ServiceResult:
+        """Get aggregated statistics for per-request tracking records.
+
+        Provides rollup views of request data, optionally filtered by
+        type or model.
+
+        Args:
+            request_type: Optional filter by request type.
+            model: Optional filter by model name.
+
+        Returns:
+            ServiceResult with stats in data on success.
+        """
+        try:
+            requests = self.storage.load_requests()
+
+            if request_type:
+                requests = [r for r in requests if r.get("type") == request_type]
+            if model:
+                requests = [r for r in requests if r.get("model") == model]
+
+            total = len(requests)
+            total_tokens_in = sum(r.get("tokens_in", 0) for r in requests)
+            total_tokens_out = sum(r.get("tokens_out", 0) for r in requests)
+            total_cached = sum(r.get("cached_tokens", 0) for r in requests)
+            total_new = sum(r.get("new_tokens", 0) for r in requests)
+
+            avg_cache_hit = (
+                sum(r.get("cache_hit_rate", 0.0) for r in requests) / total if total > 0 else 0.0
+            )
+
+            # Type breakdown
+            type_counts: dict[str, int] = {}
+            for r in requests:
+                t = r.get("type", "general")
+                type_counts[t] = type_counts.get(t, 0) + 1
+
+            # Model breakdown
+            model_counts: dict[str, int] = {}
+            for r in requests:
+                m = r.get("model", "unknown")
+                model_counts[m] = model_counts.get(m, 0) + 1
+
+            return ServiceResult(
+                success=True,
+                message=f"Stats for {total} request(s)",
+                data={
+                    "total_requests": total,
+                    "total_tokens_in": total_tokens_in,
+                    "total_tokens_out": total_tokens_out,
+                    "total_cached_tokens": total_cached,
+                    "total_new_tokens": total_new,
+                    "avg_tokens_in": round(total_tokens_in / total, 1) if total else 0,
+                    "avg_tokens_out": round(total_tokens_out / total, 1) if total else 0,
+                    "avg_cache_hit_rate": round(avg_cache_hit, 4),
+                    "by_type": type_counts,
+                    "by_model": model_counts,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting request stats: {e}")
+            return ServiceResult(
+                success=False,
+                message="Failed to get request stats",
                 error=str(e),
             )
 

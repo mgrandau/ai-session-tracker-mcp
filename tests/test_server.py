@@ -459,7 +459,7 @@ class TestHandleMessage:
 
         assert "result" in result
         assert "tools" in result["result"]
-        assert len(result["result"]["tools"]) == 7
+        assert len(result["result"]["tools"]) == 9
 
     @pytest.mark.asyncio
     async def test_tools_call_routes_to_handler(self, server: SessionTrackerServer) -> None:

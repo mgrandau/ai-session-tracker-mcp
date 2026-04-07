@@ -1052,6 +1052,119 @@ def run_session_active(*, json_output: bool = False) -> int:
     return 0 if result.success else 1
 
 
+def run_log_request(
+    *,
+    model: str,
+    request_type: str,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cache_hit_rate: float = 0.0,
+    cached_tokens: int = 0,
+    new_tokens: int = 0,
+    context_pct: float = 0.0,
+    note: str = "",
+    project: str = "",
+    developer: str = "",
+    json_output: bool = False,
+) -> int:
+    """Log a per-request tracking record via CLI.
+
+    Args:
+        model: AI model used.
+        request_type: Request category.
+        tokens_in: Input tokens.
+        tokens_out: Output tokens.
+        cache_hit_rate: Cache hit rate 0.0-1.0.
+        cached_tokens: Cached tokens.
+        new_tokens: New tokens.
+        context_pct: Context utilization %.
+        note: Optional note.
+        project: Project name.
+        developer: Developer name.
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.log_request(
+        model=model,
+        request_type=request_type,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cache_hit_rate=cache_hit_rate,
+        cached_tokens=cached_tokens,
+        new_tokens=new_tokens,
+        context_pct=context_pct,
+        note=note,
+        project=project,
+        developer=developer,
+    )
+
+    if json_output:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        if result.success:
+            data = result.data or {}
+            _log(f"Request logged: {data.get('request_id', '')}", emoji="\U0001f4cb")
+            print(f"  Type: {data.get('type', '')}")
+            print(f"  Model: {data.get('model', '')}")
+            print(f"  Tokens: {data.get('tokens_in', 0)} in / {data.get('tokens_out', 0)} out")
+        else:
+            _log(result.message, emoji="\u274c")
+            if result.error:
+                print(f"  Error: {result.error}")
+
+    return 0 if result.success else 1
+
+
+def run_request_stats(
+    *,
+    request_type: str | None = None,
+    model: str | None = None,
+    json_output: bool = False,
+) -> int:
+    """Get aggregated per-request statistics via CLI.
+
+    Args:
+        request_type: Optional filter by type.
+        model: Optional filter by model.
+        json_output: If True, output JSON.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    from .session_service import SessionService
+
+    service = SessionService()
+    result = service.get_request_stats(
+        request_type=request_type,
+        model=model,
+    )
+
+    if json_output:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        if result.success:
+            data = result.data or {}
+            _log(f"Request Stats ({data.get('total_requests', 0)} requests)", emoji="\U0001f4ca")
+            print(f"  Tokens In: {data.get('total_tokens_in', 0)}")
+            print(f"  Tokens Out: {data.get('total_tokens_out', 0)}")
+            print(f"  Avg In/Req: {data.get('avg_tokens_in', 0)}")
+            print(f"  Avg Out/Req: {data.get('avg_tokens_out', 0)}")
+            print(f"  Cache Hit Rate: {data.get('avg_cache_hit_rate', 0):.1%}")
+            print(f"  By Type: {data.get('by_type', {})}")
+            print(f"  By Model: {data.get('by_model', {})}")
+        else:
+            _log(result.message, emoji="\u274c")
+            if result.error:
+                print(f"  Error: {result.error}")
+
+    return 0 if result.success else 1
+
+
 def main() -> int:
     """
     Main CLI entry point for AI Session Tracker.
@@ -1377,6 +1490,55 @@ def main() -> int:
         help="Output as JSON",
     )
 
+    # Log request command
+    req_parser = subparsers.add_parser(
+        "log-request",
+        help="Log a per-request tracking record",
+    )
+    req_parser.add_argument(
+        "--model",
+        required=True,
+        help="AI model used",
+    )
+    req_parser.add_argument(
+        "--type",
+        dest="request_type",
+        required=True,
+        choices=["coding", "planning", "review", "debug", "general"],
+        help="Request type",
+    )
+    req_parser.add_argument("--tokens-in", type=int, default=0, help="Input tokens")
+    req_parser.add_argument("--tokens-out", type=int, default=0, help="Output tokens")
+    req_parser.add_argument(
+        "--cache-hit-rate", type=float, default=0.0, help="Cache hit rate 0.0-1.0"
+    )
+    req_parser.add_argument("--cached-tokens", type=int, default=0, help="Cached tokens")
+    req_parser.add_argument("--new-tokens", type=int, default=0, help="New tokens")
+    req_parser.add_argument("--context-pct", type=float, default=0.0, help="Context utilization %")
+    req_parser.add_argument("--note", default="", help="Optional note")
+    req_parser.add_argument("--project", default="", help="Project name")
+    req_parser.add_argument("--developer", default="", help="Developer name")
+    req_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    # Request stats command
+    req_stats_parser = subparsers.add_parser(
+        "request-stats",
+        help="Get aggregated per-request statistics",
+    )
+    req_stats_parser.add_argument("--type", dest="request_type", help="Filter by type")
+    req_stats_parser.add_argument("--model", help="Filter by model")
+    req_stats_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output as JSON",
+    )
+
     args = parser.parse_args()
 
     if args.command == "dashboard":
@@ -1432,6 +1594,27 @@ def main() -> int:
         )
     elif args.command == "active":
         return run_session_active(json_output=args.json_output)
+    elif args.command == "log-request":
+        return run_log_request(
+            model=args.model,
+            request_type=args.request_type,
+            tokens_in=args.tokens_in,
+            tokens_out=args.tokens_out,
+            cache_hit_rate=args.cache_hit_rate,
+            cached_tokens=args.cached_tokens,
+            new_tokens=args.new_tokens,
+            context_pct=args.context_pct,
+            note=args.note,
+            project=args.project,
+            developer=args.developer,
+            json_output=args.json_output,
+        )
+    elif args.command == "request-stats":
+        return run_request_stats(
+            request_type=args.request_type,
+            model=args.model,
+            json_output=args.json_output,
+        )
     elif args.command == "server":
         run_server(
             dashboard_host=args.dashboard_host,
