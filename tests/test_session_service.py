@@ -834,6 +834,68 @@ class TestStartSessionErrors:
     than unhandled crashes.
     """
 
+    def test_non_ascii_session_name_rejected(self) -> None:
+        """Verifies start_session rejects session names with non-ASCII characters.
+
+        Tests the name validation gate added for issue #22.
+
+        Business context:
+        Session names become part of session IDs used as filesystem keys.
+        Non-ASCII characters cause portability issues across platforms.
+
+        Arrangement:
+        1. Create a SessionService with default mock storage.
+
+        Action:
+        Call start_session with a name containing non-ASCII characters.
+
+        Assertion Strategy:
+        Validates input rejection by confirming:
+        - result.success is False.
+        - result.error mentions 'non-ASCII'.
+        """
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.start_session(
+            name="caf\u00e9 debugging",
+            task_type="code_generation",
+            model_name="test-model",
+            human_time_estimate_minutes=30,
+            estimate_source="manual",
+        )
+
+        assert result.success is False
+        assert "non-ASCII" in result.error
+
+    def test_empty_session_name_rejected(self) -> None:
+        """Verifies start_session rejects empty session names.
+
+        Tests the name validation gate added for issue #22.
+
+        Arrangement:
+        1. Create a SessionService with default mock storage.
+
+        Action:
+        Call start_session with an empty name.
+
+        Assertion Strategy:
+        Validates input rejection with 'cannot be empty' error.
+        """
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.start_session(
+            name="",
+            task_type="code_generation",
+            model_name="test-model",
+            human_time_estimate_minutes=30,
+            estimate_source="manual",
+        )
+
+        assert result.success is False
+        assert "cannot be empty" in result.error
+
     def test_invalid_task_type(self) -> None:
         """Verifies start_session rejects an unrecognized task_type value.
 

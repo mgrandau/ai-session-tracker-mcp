@@ -26,7 +26,48 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-__all__ = ["Session", "Interaction", "Issue", "FunctionMetrics"]
+__all__ = ["Session", "Interaction", "Issue", "FunctionMetrics", "validate_session_name"]
+
+
+def validate_session_name(name: str) -> str | None:
+    """
+    Validate that a session name contains only ASCII-safe characters.
+
+    Checks that the session name is non-empty and contains only printable
+    ASCII characters (codes 32-126). Non-ASCII characters in session names
+    cause filesystem and JSON issues across platforms.
+
+    Business context: Session names become part of session IDs which are
+    used as filesystem keys. Non-ASCII characters create portability
+    problems across Windows/Mac/Linux and different filesystem encodings.
+
+    Args:
+        name: The session name string to validate.
+
+    Returns:
+        None if the name is valid, or a descriptive error message string
+        if validation fails.
+
+    Example:
+        >>> validate_session_name('Add login feature')
+        >>> validate_session_name('')
+        'Session name cannot be empty'
+        >>> validate_session_name('café debugging')  # doctest: +SKIP
+        "Session name contains non-ASCII characters: 'é'. ..."
+    """
+    if not name or not name.strip():
+        return "Session name cannot be empty"
+
+    non_ascii = [ch for ch in name if ord(ch) > 126 or ord(ch) < 32]
+    if non_ascii:
+        # Show unique offending characters for a helpful error
+        unique_chars = "".join(dict.fromkeys(non_ascii))
+        return (
+            f"Session name contains non-ASCII characters: {unique_chars!r}. "
+            f"Use only ASCII letters, numbers, spaces, and common punctuation."
+        )
+
+    return None
 
 
 def _now_iso(*, _now: datetime | None = None) -> str:

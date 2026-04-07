@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .config import Config
-from .models import Interaction, Issue, Session
+from .models import Interaction, Issue, Session, validate_session_name
 from .statistics import StatisticsEngine
 from .storage import StorageManager
 
@@ -324,6 +324,15 @@ class SessionService:
             >>> print(result.data["session_id"])
         """
         try:
+            # Validate session name
+            name_error = validate_session_name(name)
+            if name_error:
+                return ServiceResult(
+                    success=False,
+                    message="Invalid session name",
+                    error=name_error,
+                )
+
             # Validate task_type
             if task_type not in Config.TASK_TYPES:
                 return ServiceResult(
