@@ -1256,6 +1256,19 @@ class TestInstallServiceFlag:
 class TestServiceCommand:
     """Tests for service subcommand."""
 
+    def test_service_install_command(self) -> None:
+        """Verifies 'service install' subcommand routes to run_service."""
+        from ai_session_tracker_mcp.cli import main
+
+        with (
+            patch("ai_session_tracker_mcp.cli.run_service") as mock_run,
+            patch.object(sys, "argv", ["ai-session-tracker", "service", "install"]),
+        ):
+            mock_run.return_value = 0
+            result = main()
+            mock_run.assert_called_once_with("install")
+            assert result == 0
+
     def test_service_start_command(self) -> None:
         """Verifies 'service start' subcommand works correctly.
 
@@ -1375,6 +1388,35 @@ class TestServiceCommand:
 
 class TestRunService:
     """Tests for run_service function."""
+
+    def test_run_service_install_success(self) -> None:
+        """Verifies run_service install returns 0 on success."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.install.return_value = True
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("install")
+            assert result == 0
+            mock_manager.install.assert_called_once()
+
+    def test_run_service_install_failure(self) -> None:
+        """Verifies run_service install returns 1 on failure."""
+        from ai_session_tracker_mcp.cli import run_service
+
+        mock_manager = MagicMock()
+        mock_manager.install.return_value = False
+
+        with patch(
+            "ai_session_tracker_mcp.service.get_service_manager",
+            return_value=mock_manager,
+        ):
+            result = run_service("install")
+            assert result == 1
 
     def test_run_service_start_success(self) -> None:
         """Verifies run_service start returns 0 on success.

@@ -689,7 +689,18 @@ def run_service(
         _log(f"Service management not supported: {e}", emoji="❌")
         return 1
 
-    if action == "start":
+    if action == "install":
+        _log("Installing service...", emoji="\U0001f527")
+        if manager.install():
+            _log("Service installed successfully", emoji="\u2705")
+            _log("Service will start automatically on login")
+            _log("Use 'ai-session-tracker service start' to start now")
+            return 0
+        else:
+            _log("Failed to install service", emoji="\u274c")
+            return 1
+
+    elif action == "start":
         _log("Starting service...", emoji="🚀")
         if manager.start():
             _log("Service started successfully", emoji="✅")
@@ -1289,7 +1300,7 @@ def main() -> int:
     )
     service_parser.add_argument(
         "action",
-        choices=["start", "stop", "status", "uninstall"],
+        choices=["install", "start", "stop", "status", "uninstall"],
         help="Service action to perform",
     )
 
