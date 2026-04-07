@@ -410,6 +410,12 @@ class SessionService:
         effectiveness_rating: int,
         iteration_count: int = 1,
         tools_used: list[str] | None = None,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cache_hit_rate: float = 0.0,
+        cached_tokens: int = 0,
+        new_tokens: int = 0,
+        context_pct: float = 0.0,
     ) -> ServiceResult:
         """
         Log an AI prompt/response interaction.
@@ -459,6 +465,12 @@ class SessionService:
                 effectiveness_rating=effectiveness_rating,
                 iteration_count=iteration_count,
                 tools_used=tools_used or [],
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cache_hit_rate=cache_hit_rate,
+                cached_tokens=cached_tokens,
+                new_tokens=new_tokens,
+                context_pct=context_pct,
             )
 
             self.storage.add_interaction(interaction.to_dict())
@@ -566,6 +578,14 @@ class SessionService:
             # Get session issues
             issues = self.storage.get_session_issues(session_id)
 
+            # Compute token/cache stats from interactions
+            session_interactions = self.storage.get_session_interactions(session_id)
+            token_stats = self._compute_token_stats(session_interactions)
+
+            # Store token stats on session record
+            session_data["token_stats"] = token_stats
+            self.storage.update_session(session_id, session_data)
+
             logger.info(f"Ended session {session_id}, outcome: {outcome}")
 
             return ServiceResult(
@@ -578,6 +598,7 @@ class SessionService:
                     "total_interactions": session_data.get("total_interactions", 0),
                     "avg_effectiveness": session_data.get("avg_effectiveness", 0),
                     "issues_count": len(issues),
+                    "token_stats": token_stats,
                 },
             )
 
@@ -796,6 +817,73 @@ class SessionService:
                 message="Failed to generate report",
                 error=str(e),
             )
+
+    @staticmethod
+    def _compute_token_stats(
+        interactions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute token efficiency and cache stats from interactions.
+
+        Args:
+            interactions: List of interaction dicts with token/cache fields.
+
+        Returns:
+            Dict with token_stats, cache_stats, and context_stats.
+        """
+        turns = len(interactions)
+        if turns == 0:
+            return {
+                "token_stats": {
+                    "total_in": 0,
+                    "total_out": 0,
+                    "turns": 0,
+                    "avg_in_per_turn": 0,
+                    "avg_out_per_turn": 0,
+                    "peak_in": 0,
+                    "peak_out": 0,
+                },
+                "cache_stats": {
+                    "hit_rate_pct": 0,
+                    "total_cached": 0,
+                    "total_new": 0,
+                },
+                "context_stats": {
+                    "peak_utilization_pct": 0,
+                    "compactions": 0,
+                },
+            }
+
+        tokens_in = [i.get("tokens_in", 0) for i in interactions]
+        tokens_out = [i.get("tokens_out", 0) for i in interactions]
+        total_in = sum(tokens_in)
+        total_out = sum(tokens_out)
+        total_cached = sum(i.get("cached_tokens", 0) for i in interactions)
+        total_new = sum(i.get("new_tokens", 0) for i in interactions)
+        cache_rates = [i.get("cache_hit_rate", 0.0) for i in interactions]
+        context_pcts = [i.get("context_pct", 0.0) for i in interactions]
+
+        avg_cache = sum(cache_rates) / turns if turns else 0.0
+
+        return {
+            "token_stats": {
+                "total_in": total_in,
+                "total_out": total_out,
+                "turns": turns,
+                "avg_in_per_turn": round(total_in / turns),
+                "avg_out_per_turn": round(total_out / turns),
+                "peak_in": max(tokens_in),
+                "peak_out": max(tokens_out),
+            },
+            "cache_stats": {
+                "hit_rate_pct": round(avg_cache * 100, 1),
+                "total_cached": total_cached,
+                "total_new": total_new,
+            },
+            "context_stats": {
+                "peak_utilization_pct": round(max(context_pcts), 1),
+                "compactions": 0,
+            },
+        }
 
     def log_request(
         self,

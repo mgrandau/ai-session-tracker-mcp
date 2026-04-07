@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, Response
 
 from ..presenters import ChartPresenter, DashboardPresenter
+from ..session_service import SessionService
 from ..statistics import StatisticsEngine
 from ..storage import StorageManager
 
@@ -493,6 +494,24 @@ async def gaps_partial(
     return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
+@router.get("/partials/token-stats", response_class=HTMLResponse)
+async def token_stats_partial(
+    storage: Annotated[StorageManager, Depends(get_storage)],
+) -> HTMLResponse:
+    """Render the token/cache stats panel HTML fragment.
+
+    Aggregates token usage and cache efficiency across all interactions.
+
+    Returns:
+        HTMLResponse with token stats panel.
+    """
+    interactions = storage.load_interactions()
+    stats = SessionService._compute_token_stats(interactions)
+
+    html = _render_token_stats_panel(stats)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
 @router.get("/partials/roi-chart", response_class=HTMLResponse)
 async def roi_chart_partial() -> HTMLResponse:
     """
@@ -767,6 +786,7 @@ async def api_overview(
                 overview.session_gaps.friction_indicators if overview.session_gaps else []
             ),
         },
+        "token_stats": SessionService._compute_token_stats(get_storage().load_interactions()),
     }
 
 
@@ -886,6 +906,12 @@ def _render_dashboard_html(overview: object) -> str:
     effectiveness_html = _render_effectiveness_panel(ov.effectiveness) if ov.effectiveness else ""
     gaps_html = _render_gaps_panel(ov.session_gaps) if ov.session_gaps else ""
 
+    # Compute token stats from all interactions
+    storage = get_storage()
+    all_interactions = storage.load_interactions()
+    token_stats = SessionService._compute_token_stats(all_interactions)
+    token_stats_html = _render_token_stats_panel(token_stats)
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -929,6 +955,13 @@ def _render_dashboard_html(overview: object) -> str:
                  hx-trigger="every 30s"
                  hx-swap="innerHTML">
                 {gaps_html}
+            </div>
+
+            <div class="panel" id="token-stats-panel"
+                 hx-get="/partials/token-stats"
+                 hx-trigger="every 30s"
+                 hx-swap="innerHTML">
+                {token_stats_html}
             </div>
         </div>
 
@@ -1197,3 +1230,50 @@ def _render_gaps_panel(gaps: object) -> str:
             {bars}
         </div>
         {friction_html}"""
+
+
+def _render_token_stats_panel(stats: dict[str, object]) -> str:
+    """Render token/cache stats as an HTML panel.
+
+    Args:
+        stats: Dict with token_stats, cache_stats, context_stats keys.
+
+    Returns:
+        HTML string for the token stats panel.
+    """
+    ts: dict[str, object] = stats.get("token_stats", {})  # type: ignore[assignment]
+    cs: dict[str, object] = stats.get("cache_stats", {})  # type: ignore[assignment]
+    ctx: dict[str, object] = stats.get("context_stats", {})  # type: ignore[assignment]
+
+    turns = ts.get("turns", 0)
+    cache_pct = float(cs.get("hit_rate_pct", 0))  # type: ignore[arg-type]
+    cache_class = "positive" if cache_pct >= 80 else "neutral"
+
+    t_in = ts.get("total_in", 0)
+    t_out = ts.get("total_out", 0)
+    avg_in = ts.get("avg_in_per_turn", 0)
+    avg_out = ts.get("avg_out_per_turn", 0)
+    pk_in = ts.get("peak_in", 0)
+    pk_out = ts.get("peak_out", 0)
+    cached = cs.get("total_cached", 0)
+    new_t = cs.get("total_new", 0)
+    pk_ctx = ctx.get("peak_utilization_pct", 0)
+
+    return (
+        f"<h2>\U0001f522 Token & Cache Stats</h2>"
+        f'<div class="metric {cache_class}">'
+        f"{cache_pct:.0f}%</div>"
+        f'<div class="metric-label">'
+        f"Cache Hit Rate ({turns} turns)</div>"
+        f'<div style="margin-top: 1rem; '
+        f'font-size: 0.875rem;">'
+        f"<div><b>Tokens In:</b> {t_in:,} total"
+        f" \u2022 {avg_in:,} avg \u2022 {pk_in:,} peak</div>"
+        f"<div><b>Tokens Out:</b> {t_out:,} total"
+        f" \u2022 {avg_out:,} avg \u2022 {pk_out:,} peak</div>"
+        f"<div><b>Cache:</b> {cached:,} cached"
+        f" \u2022 {new_t:,} new</div>"
+        f"<div><b>Context:</b> "
+        f"{pk_ctx:.1f}% peak</div>"
+        f"</div>"
+    )

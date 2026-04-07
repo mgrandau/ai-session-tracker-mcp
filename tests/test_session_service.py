@@ -1954,3 +1954,104 @@ class TestGetRequestStats:
 
         assert result.success is True
         assert result.data["total_requests"] == 1
+
+
+class TestTokenStatsComputation:
+    """Tests for _compute_token_stats and token stats in end_session."""
+
+    def test_compute_token_stats_empty(self) -> None:
+        """Empty interactions produce zero stats."""
+        stats = SessionService._compute_token_stats([])
+        assert stats["token_stats"]["turns"] == 0
+        assert stats["token_stats"]["total_in"] == 0
+        assert stats["cache_stats"]["hit_rate_pct"] == 0
+
+    def test_compute_token_stats_single(self) -> None:
+        """Single interaction produces correct stats."""
+        interactions = [
+            {
+                "tokens_in": 100,
+                "tokens_out": 500,
+                "cache_hit_rate": 0.95,
+                "cached_tokens": 5000,
+                "new_tokens": 100,
+                "context_pct": 12.5,
+            }
+        ]
+        stats = SessionService._compute_token_stats(interactions)
+        assert stats["token_stats"]["turns"] == 1
+        assert stats["token_stats"]["total_in"] == 100
+        assert stats["token_stats"]["total_out"] == 500
+        assert stats["token_stats"]["avg_in_per_turn"] == 100
+        assert stats["token_stats"]["peak_in"] == 100
+        assert stats["token_stats"]["peak_out"] == 500
+        assert stats["cache_stats"]["hit_rate_pct"] == 95.0
+        assert stats["cache_stats"]["total_cached"] == 5000
+        assert stats["cache_stats"]["total_new"] == 100
+        assert stats["context_stats"]["peak_utilization_pct"] == 12.5
+
+    def test_compute_token_stats_multiple(self) -> None:
+        """Multiple interactions produce correct aggregates."""
+        interactions = [
+            {"tokens_in": 50, "tokens_out": 200, "cache_hit_rate": 0.9, "context_pct": 5.0},
+            {"tokens_in": 150, "tokens_out": 800, "cache_hit_rate": 0.98, "context_pct": 15.0},
+        ]
+        stats = SessionService._compute_token_stats(interactions)
+        assert stats["token_stats"]["turns"] == 2
+        assert stats["token_stats"]["total_in"] == 200
+        assert stats["token_stats"]["total_out"] == 1000
+        assert stats["token_stats"]["avg_in_per_turn"] == 100
+        assert stats["token_stats"]["peak_in"] == 150
+        assert stats["token_stats"]["peak_out"] == 800
+        assert stats["context_stats"]["peak_utilization_pct"] == 15.0
+
+    def test_end_session_includes_token_stats(self) -> None:
+        """end_session result includes token_stats when interactions have token data."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        # Start a session
+        start_result = service.start_session(
+            name="test tokens",
+            task_type="code_generation",
+            model_name="opus",
+            human_time_estimate_minutes=30,
+            estimate_source="manual",
+        )
+        session_id = start_result.data["session_id"]
+
+        # Log interaction with token data
+        service.log_interaction(
+            session_id=session_id,
+            prompt="test prompt",
+            response_summary="test response",
+            effectiveness_rating=4,
+            tokens_in=200,
+            tokens_out=1000,
+            cache_hit_rate=0.97,
+            cached_tokens=8000,
+            new_tokens=200,
+            context_pct=10.0,
+        )
+
+        # End session
+        end_result = service.end_session(
+            session_id=session_id,
+            outcome="success",
+        )
+
+        assert end_result.success is True
+        assert "token_stats" in end_result.data
+        ts = end_result.data["token_stats"]
+        assert ts["token_stats"]["total_in"] == 200
+        assert ts["token_stats"]["total_out"] == 1000
+        assert ts["cache_stats"]["hit_rate_pct"] == 97.0
+        assert ts["context_stats"]["peak_utilization_pct"] == 10.0
+
+    def test_backward_compat_no_token_data(self) -> None:
+        """Interactions without token fields produce zero stats gracefully."""
+        interactions = [{"prompt": "test", "response_summary": "done", "effectiveness_rating": 5}]
+        stats = SessionService._compute_token_stats(interactions)
+        assert stats["token_stats"]["turns"] == 1
+        assert stats["token_stats"]["total_in"] == 0
+        assert stats["cache_stats"]["hit_rate_pct"] == 0

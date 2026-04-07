@@ -410,6 +410,12 @@ class Interaction:
     effectiveness_rating: int
     iteration_count: int = 1
     tools_used: list[str] = field(default_factory=list)
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_hit_rate: float = 0.0
+    cached_tokens: int = 0
+    new_tokens: int = 0
+    context_pct: float = 0.0
 
     @classmethod
     def create(
@@ -420,6 +426,12 @@ class Interaction:
         effectiveness_rating: int,
         iteration_count: int = 1,
         tools_used: list[str] | None = None,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cache_hit_rate: float = 0.0,
+        cached_tokens: int = 0,
+        new_tokens: int = 0,
+        context_pct: float = 0.0,
     ) -> Interaction:
         """
         Factory method to create interaction with current timestamp.
@@ -457,6 +469,12 @@ class Interaction:
             effectiveness_rating=max(1, min(5, effectiveness_rating)),
             iteration_count=max(1, iteration_count),
             tools_used=tools_used or [],
+            tokens_in=max(0, tokens_in),
+            tokens_out=max(0, tokens_out),
+            cache_hit_rate=round(max(0.0, min(1.0, cache_hit_rate)), 4),
+            cached_tokens=max(0, cached_tokens),
+            new_tokens=max(0, new_tokens),
+            context_pct=round(max(0.0, min(100.0, context_pct)), 2),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -493,6 +511,12 @@ class Interaction:
             "effectiveness_rating": self.effectiveness_rating,
             "iteration_count": self.iteration_count,
             "tools_used": self.tools_used,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "cache_hit_rate": self.cache_hit_rate,
+            "cached_tokens": self.cached_tokens,
+            "new_tokens": self.new_tokens,
+            "context_pct": self.context_pct,
         }
 
     @classmethod
@@ -527,6 +551,12 @@ class Interaction:
             effectiveness_rating=data["effectiveness_rating"],
             iteration_count=data.get("iteration_count", 1),
             tools_used=data.get("tools_used", []),
+            tokens_in=data.get("tokens_in", 0),
+            tokens_out=data.get("tokens_out", 0),
+            cache_hit_rate=data.get("cache_hit_rate", 0.0),
+            cached_tokens=data.get("cached_tokens", 0),
+            new_tokens=data.get("new_tokens", 0),
+            context_pct=data.get("context_pct", 0.0),
         )
 
 

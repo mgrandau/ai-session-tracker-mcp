@@ -304,6 +304,30 @@ class SessionTrackerServer:
                             "description": "MCP tools used in this interaction",
                             "default": [],
                         },
+                        "tokens_in": {
+                            "type": "integer",
+                            "description": "Input tokens for this interaction",
+                        },
+                        "tokens_out": {
+                            "type": "integer",
+                            "description": "Output tokens for this interaction",
+                        },
+                        "cache_hit_rate": {
+                            "type": "number",
+                            "description": "Cache hit rate 0.0-1.0",
+                        },
+                        "cached_tokens": {
+                            "type": "integer",
+                            "description": "Tokens served from cache",
+                        },
+                        "new_tokens": {
+                            "type": "integer",
+                            "description": "Fresh (non-cached) tokens",
+                        },
+                        "context_pct": {
+                            "type": "number",
+                            "description": "Context window utilization %",
+                        },
                     },
                     "required": [
                         "session_id",
@@ -648,6 +672,12 @@ Estimate: {data.get("initial_estimate_minutes", 0):.0f}min ({data.get("estimate_
                 effectiveness_rating=args["effectiveness_rating"],
                 iteration_count=args.get("iteration_count", 1),
                 tools_used=args.get("tools_used", []),
+                tokens_in=int(args.get("tokens_in", 0)),
+                tokens_out=int(args.get("tokens_out", 0)),
+                cache_hit_rate=float(args.get("cache_hit_rate", 0.0)),
+                cached_tokens=int(args.get("cached_tokens", 0)),
+                new_tokens=int(args.get("new_tokens", 0)),
+                context_pct=float(args.get("context_pct", 0.0)),
             )
 
             if not result.success:
