@@ -8,6 +8,7 @@ MODEL HIERARCHY:
 - Session: Top-level workflow container (has many Interactions, Issues)
 - Interaction: Individual prompt/response exchange within a Session
 - Issue: Flagged problem within a Session
+- Request: Standalone AI request/response record (no session required)
 - CodeMetrics: Code quality data for functions modified in a Session
 
 SERIALIZATION:
@@ -25,8 +26,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
-__all__ = ["Session", "Interaction", "Issue", "FunctionMetrics", "validate_session_name"]
+__all__ = ["Session", "Interaction", "Issue", "Request", "FunctionMetrics", "validate_session_name"]
 
 
 def validate_session_name(name: str) -> str | None:
@@ -525,6 +527,212 @@ class Interaction:
             effectiveness_rating=data["effectiveness_rating"],
             iteration_count=data.get("iteration_count", 1),
             tools_used=data.get("tools_used", []),
+        )
+
+
+@dataclass
+class Request:
+    """
+    Individual AI request/response record.
+
+    Standalone tracking unit — no session container needed.
+    Each record represents one prompt/response exchange with
+    token usage, cache stats, and request type classification.
+
+    PURPOSE: Lightweight alternative to Session for tracking individual
+    AI interactions without the overhead of session lifecycle management.
+    Ideal for per-request cost analysis and cache efficiency monitoring.
+
+    REQUEST TYPES:
+    - coding: Code generation, modification, or review
+    - planning: Architecture, design, roadmap discussions
+    - review: Code review, PR review
+    - debug: Debugging and troubleshooting
+    - general: Everything else
+
+    SERIALIZATION:
+    Uses to_dict()/from_dict() for JSON persistence, consistent with
+    Session and Interaction patterns.
+
+    USAGE:
+        request = Request.create(
+            model="claude-opus-4-20250514",
+            request_type="coding",
+            tokens_in=1500,
+            tokens_out=800,
+            cache_hit_rate=0.75,
+            project="my-project",
+        )
+    """
+
+    id: str
+    timestamp: str
+    model: str
+    type: str
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_hit_rate: float = 0.0
+    cached_tokens: int = 0
+    new_tokens: int = 0
+    context_pct: float = 0.0
+    note: str = ""
+    project: str = ""
+    developer: str = ""
+
+    @classmethod
+    def create(
+        cls,
+        model: str,
+        request_type: str,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cache_hit_rate: float = 0.0,
+        cached_tokens: int = 0,
+        new_tokens: int = 0,
+        context_pct: float = 0.0,
+        note: str = "",
+        project: str = "",
+        developer: str = "",
+    ) -> Request:
+        """
+        Factory method to create a request with generated ID and timestamp.
+
+        Creates a new Request with a UUID identifier and current UTC timestamp.
+        Input values are clamped to valid ranges for data integrity.
+
+        Business context: Factory pattern ensures consistent ID generation
+        and timestamp assignment, matching the Session/Interaction pattern.
+        Clamping prevents invalid metric values from corrupting analytics.
+
+        Args:
+            model: AI model identifier (e.g., "claude-opus-4-20250514", "gpt-4o").
+            request_type: Category from Config.REQUEST_TYPES
+                ("coding", "planning", "review", "debug", "general").
+            tokens_in: Input/prompt token count. Clamped to >= 0.
+            tokens_out: Output/completion token count. Clamped to >= 0.
+            cache_hit_rate: Fraction of tokens served from cache (0.0-1.0).
+                Clamped to [0.0, 1.0], rounded to 4 decimal places.
+            cached_tokens: Number of tokens served from cache. Clamped to >= 0.
+            new_tokens: Number of newly computed tokens. Clamped to >= 0.
+            context_pct: Percentage of context window used (0.0-100.0).
+                Clamped to [0.0, 100.0], rounded to 2 decimal places.
+            note: Optional free-text note about this request.
+            project: Project identifier for cross-project analytics.
+            developer: Developer identifier for per-developer tracking.
+
+        Returns:
+            New Request instance with unique UUID and current timestamp.
+
+        Raises:
+            None: Pure construction with clamping, never raises.
+
+        Example:
+            >>> req = Request.create("claude-opus-4-20250514", "coding", tokens_in=1000)
+            >>> req.type
+            'coding'
+            >>> 0.0 <= req.cache_hit_rate <= 1.0
+            True
+        """
+        return cls(
+            id=str(uuid4()),
+            timestamp=_now_iso(),
+            model=model,
+            type=request_type,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cache_hit_rate=round(max(0.0, min(1.0, cache_hit_rate)), 4),
+            cached_tokens=max(0, cached_tokens),
+            new_tokens=max(0, new_tokens),
+            context_pct=round(max(0.0, min(100.0, context_pct)), 2),
+            note=note,
+            project=project,
+            developer=developer,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Serialize request to dictionary for JSON storage.
+
+        Converts all request fields to a JSON-compatible dictionary.
+        The dictionary can be directly serialized with json.dumps()
+        for persistent storage.
+
+        Business context: Requests are stored as JSON for simplicity
+        and human readability, consistent with Session storage patterns.
+
+        Args:
+            None: Instance method, accesses self attributes.
+
+        Returns:
+            Dict containing all request fields with string keys including
+            id, timestamp, model, type, token counts, cache stats, and metadata.
+
+        Raises:
+            None: Dict construction never raises.
+
+        Example:
+            >>> req = Request.create("opus", "coding", tokens_in=500)
+            >>> data = req.to_dict()
+            >>> data['model']
+            'opus'
+        """
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp,
+            "model": self.model,
+            "type": self.type,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "cache_hit_rate": self.cache_hit_rate,
+            "cached_tokens": self.cached_tokens,
+            "new_tokens": self.new_tokens,
+            "context_pct": self.context_pct,
+            "note": self.note,
+            "project": self.project,
+            "developer": self.developer,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Request:
+        """
+        Deserialize request from dictionary.
+
+        Reconstructs a Request instance from stored data. Handles
+        optional fields with sensible defaults for backwards compatibility.
+
+        Business context: Loading requests from storage enables
+        aggregation and analytics across time periods and projects.
+
+        Args:
+            data: Dict containing request fields as stored by to_dict().
+                Required: 'id'. All other fields have defaults.
+
+        Returns:
+            Request instance with all fields populated from the dict.
+
+        Raises:
+            KeyError: If required field 'id' is missing.
+
+        Example:
+            >>> data = {'id': 'abc-123', 'model': 'opus', 'type': 'coding'}
+            >>> req = Request.from_dict(data)
+            >>> req.model
+            'opus'
+        """
+        return cls(
+            id=data["id"],
+            timestamp=data.get("timestamp", ""),
+            model=data.get("model", "unknown"),
+            type=data.get("type", "general"),
+            tokens_in=data.get("tokens_in", 0),
+            tokens_out=data.get("tokens_out", 0),
+            cache_hit_rate=data.get("cache_hit_rate", 0.0),
+            cached_tokens=data.get("cached_tokens", 0),
+            new_tokens=data.get("new_tokens", 0),
+            context_pct=data.get("context_pct", 0.0),
+            note=data.get("note", ""),
+            project=data.get("project", ""),
+            developer=data.get("developer", ""),
         )
 
 

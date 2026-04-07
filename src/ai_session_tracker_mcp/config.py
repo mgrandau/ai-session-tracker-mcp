@@ -59,6 +59,7 @@ class Config:
     SESSIONS_FILE: ClassVar[str] = "sessions.json"
     INTERACTIONS_FILE: ClassVar[str] = "interactions.json"
     ISSUES_FILE: ClassVar[str] = "issues.json"
+    REQUESTS_FILE: ClassVar[str] = "requests.json"
     CHARTS_DIR: ClassVar[str] = "charts"
 
     # =========================================================================
@@ -100,9 +101,24 @@ class Config:
             "testing",
             "analysis",
             "architecture_planning",
+            "planning",
             "human_review",  # Excluded from productivity metrics
         }
     )
+
+    REQUEST_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "coding",
+            "planning",
+            "review",
+            "debug",
+            "general",
+        }
+    )
+    """
+    Valid request type categories for standalone request tracking.
+    Used by Request model to classify individual AI exchanges.
+    """
 
     EXCLUDED_FROM_ROI: ClassVar[frozenset[str]] = frozenset({"human_review"})
     """

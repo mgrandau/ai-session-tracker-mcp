@@ -67,6 +67,7 @@ class MockStorage:
         self.sessions: dict[str, dict] = {}
         self.interactions: list[dict] = []
         self.issues: list[dict] = []
+        self.requests: list[dict] = []
 
     def load_sessions(self) -> dict:
         """Return a shallow copy of all stored sessions for test isolation.
@@ -379,6 +380,15 @@ class MockStorage:
             assert len(storage.get_session_interactions("s1")) == 1
         """
         return [i for i in self.interactions if i.get("session_id") == session_id]
+
+    def load_requests(self) -> list:
+        """Return all stored requests."""
+        return list(self.requests)
+
+    def add_request(self, request: dict) -> bool:
+        """Append a request record."""
+        self.requests.append(request)
+        return True
 
     def add_interaction(self, interaction: dict) -> bool:
         """Append an interaction record (alias for save_interaction).
@@ -1852,3 +1862,95 @@ class TestCloseActiveSessionsOnShutdown:
 
         # Should return 0, not raise
         assert count == 0
+
+
+class TestLogRequest:
+    """Tests for log_request service method."""
+
+    def test_log_request_success(self) -> None:
+        """Valid request is logged and returns request_id."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.log_request(
+            model="claude-opus-4.6",
+            request_type="coding",
+            tokens_in=500,
+            tokens_out=1200,
+            cache_hit_rate=0.95,
+        )
+
+        assert result.success is True
+        assert "request_id" in result.data
+        assert result.data["type"] == "coding"
+        assert result.data["tokens_in"] == 500
+
+    def test_log_request_planning_type(self) -> None:
+        """Planning request type is accepted."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.log_request(
+            model="claude-opus-4.6",
+            request_type="planning",
+        )
+
+        assert result.success is True
+        assert result.data["type"] == "planning"
+
+    def test_log_request_invalid_type(self) -> None:
+        """Invalid request type is rejected."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.log_request(
+            model="claude-opus-4.6",
+            request_type="invalid_type",
+        )
+
+        assert result.success is False
+        assert "request_type must be one of" in result.error
+
+
+class TestGetRequestStats:
+    """Tests for get_request_stats service method."""
+
+    def test_empty_stats(self) -> None:
+        """Stats on empty data returns zeros."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        result = service.get_request_stats()
+
+        assert result.success is True
+        assert result.data["total_requests"] == 0
+
+    def test_stats_after_logging(self) -> None:
+        """Stats reflect logged requests."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        service.log_request(model="opus", request_type="coding", tokens_in=100, tokens_out=500)
+        service.log_request(model="opus", request_type="planning", tokens_in=200, tokens_out=800)
+
+        result = service.get_request_stats()
+
+        assert result.success is True
+        assert result.data["total_requests"] == 2
+        assert result.data["total_tokens_in"] == 300
+        assert result.data["total_tokens_out"] == 1300
+        assert result.data["by_type"]["coding"] == 1
+        assert result.data["by_type"]["planning"] == 1
+
+    def test_stats_filter_by_type(self) -> None:
+        """Stats can be filtered by request type."""
+        storage = MockStorage()
+        service = SessionService(storage=storage)
+
+        service.log_request(model="opus", request_type="coding", tokens_in=100)
+        service.log_request(model="opus", request_type="planning", tokens_in=200)
+
+        result = service.get_request_stats(request_type="coding")
+
+        assert result.success is True
+        assert result.data["total_requests"] == 1
