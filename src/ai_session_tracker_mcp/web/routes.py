@@ -1246,16 +1246,14 @@ def _render_token_stats_panel(stats: dict[str, object]) -> str:
     ctx: dict[str, object] = stats.get("context_stats", {})  # type: ignore[assignment]
 
     turns = ts.get("turns", 0)
-    cache_pct = float(cs.get("hit_rate_pct", 0))  # type: ignore[arg-type]
+    cache_pct = float(cs.get("peak_hit_rate_pct", 0))  # type: ignore[arg-type]
     cache_class = "positive" if cache_pct >= 80 else "neutral"
 
-    t_in = ts.get("total_in", 0)
     t_out = ts.get("total_out", 0)
-    avg_in = ts.get("avg_in_per_turn", 0)
     avg_out = ts.get("avg_out_per_turn", 0)
     pk_in = ts.get("peak_in", 0)
     pk_out = ts.get("peak_out", 0)
-    cached = cs.get("total_cached", 0)
+    pk_cached = cs.get("peak_cached", 0)
     new_t = cs.get("total_new", 0)
     pk_ctx = ctx.get("peak_utilization_pct", 0)
 
@@ -1264,15 +1262,15 @@ def _render_token_stats_panel(stats: dict[str, object]) -> str:
         f'<div class="metric {cache_class}">'
         f"{cache_pct:.0f}%</div>"
         f'<div class="metric-label">'
-        f"Cache Hit Rate ({turns} turns)</div>"
+        f"Peak Cache Hit Rate ({turns} turns)</div>"
         f'<div style="margin-top: 1rem; '
         f'font-size: 0.875rem;">'
-        f"<div><b>Tokens In:</b> {t_in:,} total"
-        f" \u2022 {avg_in:,} avg \u2022 {pk_in:,} peak</div>"
-        f"<div><b>Tokens Out:</b> {t_out:,} total"
-        f" \u2022 {avg_out:,} avg \u2022 {pk_out:,} peak</div>"
-        f"<div><b>Cache:</b> {cached:,} cached"
-        f" \u2022 {new_t:,} new</div>"
+        f"<div><b>Window Peak In:</b> {pk_in:,}</div>"
+        f"<div><b>Total Out:</b> {t_out:,}"
+        f" \u2022 {avg_out:,} avg/turn"
+        f" \u2022 {pk_out:,} peak</div>"
+        f"<div><b>Cache:</b> {pk_cached:,} peak cached"
+        f" \u2022 {new_t:,} total new</div>"
         f"<div><b>Context:</b> "
         f"{pk_ctx:.1f}% peak</div>"
         f"</div>"

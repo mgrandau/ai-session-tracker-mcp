@@ -834,17 +834,15 @@ class SessionService:
         if turns == 0:
             return {
                 "token_stats": {
-                    "total_in": 0,
                     "total_out": 0,
                     "turns": 0,
-                    "avg_in_per_turn": 0,
                     "avg_out_per_turn": 0,
                     "peak_in": 0,
                     "peak_out": 0,
                 },
                 "cache_stats": {
-                    "hit_rate_pct": 0,
-                    "total_cached": 0,
+                    "peak_hit_rate_pct": 0,
+                    "peak_cached": 0,
                     "total_new": 0,
                 },
                 "context_stats": {
@@ -855,32 +853,36 @@ class SessionService:
 
         tokens_in = [i.get("tokens_in", 0) for i in interactions]
         tokens_out = [i.get("tokens_out", 0) for i in interactions]
-        total_in = sum(tokens_in)
-        total_out = sum(tokens_out)
-        total_cached = sum(i.get("cached_tokens", 0) for i in interactions)
-        total_new = sum(i.get("new_tokens", 0) for i in interactions)
+        cached_tokens = [i.get("cached_tokens", 0) for i in interactions]
+        new_tokens = [i.get("new_tokens", 0) for i in interactions]
         cache_rates = [i.get("cache_hit_rate", 0.0) for i in interactions]
         context_pcts = [i.get("context_pct", 0.0) for i in interactions]
 
-        avg_cache = sum(cache_rates) / turns if turns else 0.0
+        # Window-level: max values (context window is cumulative)
+        peak_in = max(tokens_in)
+        peak_cached = max(cached_tokens)
+        peak_context = max(context_pcts)
+        peak_cache_rate = max(cache_rates)
+
+        # Per-turn output: sums (each turn generates new output)
+        total_out = sum(tokens_out)
+        total_new = sum(new_tokens)
 
         return {
             "token_stats": {
-                "total_in": total_in,
                 "total_out": total_out,
                 "turns": turns,
-                "avg_in_per_turn": round(total_in / turns),
                 "avg_out_per_turn": round(total_out / turns),
-                "peak_in": max(tokens_in),
+                "peak_in": peak_in,
                 "peak_out": max(tokens_out),
             },
             "cache_stats": {
-                "hit_rate_pct": round(avg_cache * 100, 1),
-                "total_cached": total_cached,
+                "peak_hit_rate_pct": round(peak_cache_rate * 100, 1),
+                "peak_cached": peak_cached,
                 "total_new": total_new,
             },
             "context_stats": {
-                "peak_utilization_pct": round(max(context_pcts), 1),
+                "peak_utilization_pct": round(peak_context, 1),
                 "compactions": 0,
             },
         }
