@@ -7,14 +7,25 @@ Flow: start_ai_session(name,type,model,mins,source) → session_id → log_ai_in
 Use MCP tools if available; else use CLI equivalents.
 Optional: flag_ai_issue(session_id,type,desc,severity)
 
-type:code_generation|debugging|refactoring|testing|documentation|analysis|architecture_planning|human_review
+type:code_generation|debugging|refactoring|testing|documentation|analysis|architecture_planning|planning|human_review
 rating:1fail|2poor|3partial|4good|5perfect
 severity:critical|high|medium|low
 outcome:success|partial|failed
 mins:15|30|60|120|240|480|960|2400|4800 (human time)
 source:issue_tracker|manual|historical
 
+Session names: ASCII only (letters, numbers, spaces, common punctuation). Non-ASCII characters are rejected.
+
 Lost id? get_active_sessions()
+
+## Per-Request Tracking (lightweight alternative)
+For standalone request/response logging without session overhead:
+```
+log_ai_request(model, request_type, tokens_in, tokens_out, cache_hit_rate, cached_tokens, new_tokens, context_pct, note)
+```
+request_type: coding|planning|review|debug|general
+
+Query stats: get_request_stats(request_type?, model?)
 
 ## End Session Protocol
 1. Run `git diff --stat` → get total lines changed

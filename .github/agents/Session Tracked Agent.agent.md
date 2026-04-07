@@ -16,7 +16,7 @@ tools: ['vscode', 'execute', 'read', 'edit', 'search', 'web', 'gitkraken/*', 'co
 ```
 start_ai_session(
   session_name,              # descriptive name
-  task_type,                 # code_generation|debugging|refactoring|testing|documentation|analysis|architecture_planning|human_review
+  task_type,                 # code_generation|debugging|refactoring|testing|documentation|analysis|architecture_planning|planning|human_review
   model_name,                # e.g. "claude-opus-4-20250514"
   initial_estimate_minutes,  # human time estimate (15|30|60|120|240|480|960|2400|4800)
   estimate_source,           # manual|issue_tracker|historical
@@ -61,3 +61,12 @@ end_ai_session(
 ## Architecture
 - **Background**: Session tracking captures metrics automatically
 - **Foreground**: Confirmation workflow guides user interaction
+
+## Per-Request Tracking
+For lightweight tracking without full session overhead (e.g., planning conversations, quick questions):
+```
+log_ai_request(model, request_type, tokens_in, tokens_out, cache_hit_rate, ...)
+```
+request_type: coding|planning|review|debug|general
+
+Use `planning` type for architecture decisions, design discussions, roadmap conversations, and pre-implementation scoping.
